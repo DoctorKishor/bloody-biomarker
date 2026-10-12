@@ -10,7 +10,7 @@ import { config } from '@/config'
 import { themeConfig } from '@/constants'
 import { useCurrentUser } from '@/db'
 import { useGoogleDriveAutoBackup } from '@/googleDrive'
-import { HomePage, DataPage, BiomarkerRecordsPage, FormulaDetailPage } from '@/pages'
+import { HomePage, DataPage, BiomarkerRecordsPage, FormulaDetailPage, GuavaApp } from '@/pages'
 
 ModuleRegistry.registerModules([
     ClientSideRowModelModule,
@@ -47,7 +47,10 @@ export const App = () => {
                     <PageViewTracker/>
                     <GoogleDriveAutoBackup/>
                     <Routes>
-                        <Route path='/' element={<HomePage/>}/>
+                        <Route path='/' element={<GuavaApp/>}/>
+                        <Route path='/profile' element={<GuavaApp/>}/>
+                        <Route path='/biomarkers' element={<GuavaApp/>}/>
+                        <Route path='/home' element={<HomePage/>}/>
                         <Route path='/data' element={<DataPage/>}/>
                         <Route path='/biomarker/:id' element={<BiomarkerRecordsPage/>}/>
                         <Route path='/formula/:id' element={<FormulaDetailPage/>}/>

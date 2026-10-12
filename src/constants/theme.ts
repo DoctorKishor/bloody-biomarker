@@ -14,11 +14,11 @@ export const themeConfig: ThemeConfig = {
         colorBorder: COLORS.GRAY_200,
         colorBgContainer: '#ffffff',
         colorBgLayout: COLORS.GRAY_50,
-        borderRadius: 8,
-        borderRadiusLG: 12,
-        borderRadiusSM: 6,
+        borderRadius: 12,
+        borderRadiusLG: 16,
+        borderRadiusSM: 8,
         fontSize: 14,
-        fontFamily: '-apple-system, blinkmacsystemfont, "Segoe UI", roboto, "Helvetica Neue", arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     },
     components: {
         Button: {
@@ -26,26 +26,31 @@ export const themeConfig: ThemeConfig = {
             controlHeightLG: 48,
             controlHeightSM: 32,
             borderRadiusLG: 9999,
-            borderRadius: 4,
-            borderRadiusSM: 4,
+            borderRadius: 9999,
+            borderRadiusSM: 9999,
             primaryShadow: 'none',
         },
         Input: {
             controlHeight: 40,
-            borderRadius: 4,
+            borderRadius: 12,
         },
         Select: {
             controlHeight: 40,
-            borderRadius: 4,
+            borderRadius: 12,
         },
         Card: {
-            borderRadiusLG: 4,
+            borderRadiusLG: 16,
         },
         Modal: {
-            borderRadiusLG: 4,
+            borderRadiusLG: 20,
         },
         Tooltip: {
-            borderRadius: 4,
+            borderRadius: 8,
+        },
+        Tabs: {
+            itemSelectedColor: COLORS.PRIMARY,
+            inkBarColor: COLORS.PRIMARY,
+            itemHoverColor: COLORS.PRIMARY_HOVER,
         },
     },
 }

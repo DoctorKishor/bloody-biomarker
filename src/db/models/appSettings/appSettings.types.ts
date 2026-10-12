@@ -14,9 +14,15 @@ export interface GoogleDriveBackupSettings {
     connectedAt?: Date
 }
 
+export type AiProvider = 'gemini' | 'openai'
+
 export interface AppSettings {
     id: string
+    aiProvider?: AiProvider
     openaiApiKey: string
+    geminiApiKey?: string
+    aiModel?: string
+    geminiModel?: string
     lastExportedAt?: Date
     googleDriveBackup?: GoogleDriveBackupSettings
     createdAt: Date

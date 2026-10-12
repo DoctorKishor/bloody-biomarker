@@ -97,6 +97,7 @@ const sanitizeAppSettingsForBackup = (settings: Record<string, unknown>, exporte
     return {
         ...settings,
         openaiApiKey: '',
+        geminiApiKey: '',
         lastExportedAt: exportedAt,
         googleDriveBackup,
     } as AppSettings
@@ -105,7 +106,7 @@ const sanitizeAppSettingsForBackup = (settings: Record<string, unknown>, exporte
 export const createDatabaseBackupBlob = async (exportedAt: Date): Promise<Blob> => {
     return await exportDB(db, {
         transform: (table: string, value: unknown) => {
-            if (table === 'appSettings' && value && typeof value === 'object' && 'openaiApiKey' in value) {
+            if (table === 'appSettings' && value && typeof value === 'object' && ('openaiApiKey' in value || 'geminiApiKey' in value)) {
                 return {
                     value: sanitizeAppSettingsForBackup(value as Record<string, unknown>, exportedAt),
                 }

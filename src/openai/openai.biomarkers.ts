@@ -3,9 +3,12 @@ import { useCallback } from 'react'
 import { ChatCompletion } from 'openai/resources'
 import { z } from 'zod'
 
+import { AiProvider, useAppSettings } from '@/db/models/appSettings'
 import { useBiomarkerConfigs } from '@/db/models/biomarkerConfig'
 import { useUnits } from '@/db/models/unit'
 import { Range } from '@/db/types'
+import { useGemini } from '@/gemini'
+import { parseReferenceRangeInput } from '@/utils/referenceRange'
 import { isAmbiguousUcumCode } from '@/utils/ucum'
 import { getUnitType } from '@/utils/ucum/unitType'
 
@@ -33,16 +36,17 @@ export interface ExtractionResult {
     labName?: string
 }
 
-const referenceRangeSchema = z.object({
-    min: z.number({
-        message: 'referenceRange.min must be a number',
-    }).nullable().optional(),
-    max: z.number({
-        message: 'referenceRange.max must be a number',
-    }).nullable().optional(),
-}).transform((val) => ({
-    min: val.min ?? undefined,
-    max: val.max ?? undefined,
+const referenceRangeSchema = z.preprocess((val) => {
+    return parseReferenceRangeInput(val)
+}, z.object({
+    min: z.number().nullable().optional(),
+    max: z.number().nullable().optional(),
+}).optional().nullable().transform((val) => {
+    if (!val) return undefined
+    return {
+        min: val.min ?? undefined,
+        max: val.max ?? undefined,
+    }
 }))
 
 export const extractedBiomarkerSchema = z.object({
@@ -208,6 +212,34 @@ For qualitative (non-numeric) results, use "textValue" field with appropriate uc
 - Use unit: "Note" with ucumCode: "{note}" for TEXT-BASED results ONLY as a fallback when no appropriate specific ucumCode can be determined
 - ALWAYS normalize textValue to English (e.g., "Отрицательный" → "Negative", "Положительный" → "Positive", "Обнаружено" → "Detected")
 
+Reference Range Rules (CRITICAL - ALWAYS EXTRACT FOR NUMERIC RESULTS):
+- referenceRange must ALWAYS be extracted for numeric biomarkers when reference ranges or normal values are provided on the document.
+- Format: { "min": number or null, "max": number or null }
+- Handling MULTIPLE / CATEGORIZED reference ranges (e.g. Normal, Impaired, Diabetic, Desirable, Borderline, Optimal, High, Low):
+  * When a document presents multiple tiered categories, ALWAYS extract the NORMAL / HEALTHY / DESIRABLE / OPTIMAL / IDEAL / LOW RISK range into referenceRange!
+  * Do NOT extract the impaired, diabetic, or high-risk thresholds as the reference range.
+  * Real-world examples of multiple categorized ranges:
+    - "NORMAL: Upto 110 \n IMPAIRED: 111 to 125 \n DIABETIC: More than 126"
+      -> Extract NORMAL: { "min": null, "max": 110 }
+    - "NORMAL: Upto 140 \n IMPAIRED: 141 to 200 \n DIABETIC: More than 200"
+      -> Extract NORMAL: { "min": null, "max": 140 }
+    - "BORDERLINE HIGH: - 200- 239 \n DESIRABLE: - Upto 200 \n HIGH: - >240"
+      -> Extract DESIRABLE: { "min": null, "max": 200 }
+    - "Best : 60 and above, Normal : 40 to 59 (But Higher the Better), Low : Below 40"
+      -> Extract NORMAL: { "min": 40, "max": 59 }
+    - "Lowrisk:Below 100, Ideal:Below 130, BorderlineLow:131 -159, BorderlineHigh:160-189, High:190-219, VeryHigh:>220"
+      -> Extract IDEAL: { "min": null, "max": 130 }
+    - "Optimal : Below 100, Near Optimal / Above Optimal : 100 to 129, Borderline High : 130 to 159, High : 160 to 189, Very High : 190 and above"
+      -> Extract OPTIMAL: { "min": null, "max": 100 }
+- One-sided reference ranges:
+  * "Upto 110", "Below 150", "< 150", "<= 150", "Less than 150" -> { "min": null, "max": 150 }
+  * "More than 60", "> 60", ">= 60", "60 and above", "Above 60" -> { "min": 60, "max": null }
+- Standard two-sided ranges:
+  * "17 - 43" -> { "min": 17, "max": 43 }
+  * "0.84 - 1.25" -> { "min": 0.84, "max": 1.25 }
+  * "3.5 - 7.2" -> { "min": 3.5, "max": 7.2 }
+- Only set referenceRange to null if the test result is qualitative/text-based or if no reference range is provided in the document.
+
 General Rules:
 - Clean the extracted text from obviously incorrect and unnecessary symbols (e.g., garbage characters, formatting artifacts, stray symbols)
 - For numeric biomarker values: use "value" field (number type)
@@ -222,13 +254,18 @@ General Rules:
 - Return only valid JSON, no additional text`
 
 export const useExtractBiomarkers = () => {
-    const { client, hasApiKey, loading } = useOpenAI()
+    const { client: openaiClient, hasApiKey: hasOpenaiKey, loading: openaiLoading } = useOpenAI()
+    const { client: geminiClient, hasApiKey: hasGeminiKey, loading: geminiLoading } = useGemini()
+    const { data: settings } = useAppSettings()
     const { data: configs } = useBiomarkerConfigs()
     const { data: units } = useUnits()
 
-    const extractBiomarkers = useCallback(async (imageBase64: string, followUpMessage?: string, model?: string): Promise<ExtractionResult | null> => {
-        if (!client) return null
+    const currentSettings = settings[0]
+    const provider: AiProvider = currentSettings?.aiProvider ?? (currentSettings?.geminiApiKey ? 'gemini' : 'openai')
+    const hasApiKey = provider === 'gemini' ? hasGeminiKey : hasOpenaiKey
+    const loading = openaiLoading || geminiLoading
 
+    const extractBiomarkers = useCallback(async (imageBase64: string, followUpMessage?: string, model?: string): Promise<ExtractionResult | null> => {
         const existingBiomarkers = configs.map(c => {
             const unit = units.find(u => u.ucumCode === c.ucumCode)
             return {
@@ -240,6 +277,51 @@ export const useExtractBiomarkers = () => {
             }
         })
         const prompt = buildExtractionPrompt(existingBiomarkers)
+
+        if (provider === 'gemini') {
+            if (!geminiClient) return null
+
+            // Strip "data:image/png;base64," header if present for inlineData
+            const base64Data = imageBase64.replace(/^data:image\/[^;]+;base64,/, '')
+
+            const geminiResponse = await geminiClient.models.generateContent({
+                model: model ?? currentSettings?.geminiModel ?? currentSettings?.aiModel ?? 'gemini-3.8-flash',
+                contents: [
+                    {
+                        role: 'user',
+                        parts: [
+                            {
+                                text: prompt,
+                            },
+                            {
+                                text: followUpMessage
+                                    ? `Extract biomarkers from this document image following the rules and JSON schema strictly.\nAdditional user request:\n${followUpMessage}`
+                                    : 'Extract biomarkers from this document image. Adhere strictly to the biomarker rules and JSON schema.',
+                            },
+                            {
+                                inlineData: {
+                                    mimeType: 'image/png',
+                                    data: base64Data,
+                                },
+                            },
+                        ],
+                    },
+                ],
+                config: {
+                    responseMimeType: 'application/json',
+                    temperature: 0.1,
+                },
+            })
+
+            const content = geminiResponse.text
+            if (!content) return null
+
+            const cleaned = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+            const result = JSON.parse(cleaned) as ExtractionResult
+            return result
+        }
+
+        if (!openaiClient) return null
 
         const messages = [
             {
@@ -275,8 +357,8 @@ export const useExtractBiomarkers = () => {
             })
         }
 
-        const completion = await client.chat.completions.create({
-            model: model ?? 'gpt-5.4',
+        const completion = await openaiClient.chat.completions.create({
+            model: model ?? currentSettings?.aiModel ?? 'gpt-5.4',
             messages: messages as never,
             reasoning_effort: 'low',
             temperature: 1,
@@ -289,11 +371,12 @@ export const useExtractBiomarkers = () => {
 
         const result = JSON.parse(content) as ExtractionResult
         return result
-    }, [client, configs, units])
+    }, [provider, geminiClient, openaiClient, currentSettings?.geminiModel, currentSettings?.aiModel, configs, units])
 
     return {
         extractBiomarkers,
         hasApiKey,
         loading,
+        provider,
     }
 }

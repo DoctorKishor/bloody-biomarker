@@ -4,6 +4,7 @@ import {
     DeleteOutlined,
     DisconnectOutlined,
     DownloadOutlined,
+    KeyOutlined,
     MenuOutlined,
     UploadOutlined,
     WarningFilled,
@@ -11,8 +12,15 @@ import {
 import { Button, Checkbox, Dropdown, Modal, MenuProps, Tooltip, message } from 'antd'
 import { usePostHog } from 'posthog-js/react'
 
+import { ApiKeyInput } from '@/components/ApiKeyInput'
 import { config } from '@/config'
-import { COLORS, DB_NAME, PRESERVED_OPENAI_TOKEN_KEY } from '@/constants'
+import {
+    COLORS,
+    DB_NAME,
+    PRESERVED_OPENAI_TOKEN_KEY,
+    PRESERVED_GEMINI_TOKEN_KEY,
+    PRESERVED_AI_PROVIDER_KEY,
+} from '@/constants'
 import { useExportStatus } from '@/db'
 import { useAppSettings } from '@/db/models/appSettings'
 import { useBiomarkerConfigs } from '@/db/models/biomarkerConfig'
@@ -42,6 +50,7 @@ export const ImportButton = (props: ImportButtonProps) => {
     const [isModalVisible, setIsModalVisible] = useState(false)
     const [isImportModalVisible, setIsImportModalVisible] = useState(false)
     const [isDriveModalVisible, setIsDriveModalVisible] = useState(false)
+    const [isAiSettingsModalVisible, setIsAiSettingsModalVisible] = useState(false)
     const [isResetting, setIsResetting] = useState(false)
     const [isDriveSyncing, setIsDriveSyncing] = useState(false)
     const [preserveToken, setPreserveToken] = useState(true)
@@ -211,9 +220,21 @@ export const ImportButton = (props: ImportButtonProps) => {
         const tokenToPreserve = preserveToken && currentSettings?.openaiApiKey
             ? currentSettings.openaiApiKey
             : null
+        const geminiTokenToPreserve = preserveToken && currentSettings?.geminiApiKey
+            ? currentSettings.geminiApiKey
+            : null
+        const aiProviderToPreserve = preserveToken && currentSettings?.aiProvider
+            ? currentSettings.aiProvider
+            : null
 
         if (tokenToPreserve) {
             sessionStorage.setItem(PRESERVED_OPENAI_TOKEN_KEY, tokenToPreserve)
+        }
+        if (geminiTokenToPreserve) {
+            sessionStorage.setItem(PRESERVED_GEMINI_TOKEN_KEY, geminiTokenToPreserve)
+        }
+        if (aiProviderToPreserve) {
+            sessionStorage.setItem(PRESERVED_AI_PROVIDER_KEY, aiProviderToPreserve)
         }
 
         setIsResetting(true)
@@ -221,13 +242,21 @@ export const ImportButton = (props: ImportButtonProps) => {
 
         deleteRequest.onsuccess = () => {
             localStorage.clear()
-            if (!tokenToPreserve) {
+            if (!preserveToken) {
                 sessionStorage.clear()
             } else {
                 const preservedToken = sessionStorage.getItem(PRESERVED_OPENAI_TOKEN_KEY)
+                const preservedGemini = sessionStorage.getItem(PRESERVED_GEMINI_TOKEN_KEY)
+                const preservedProvider = sessionStorage.getItem(PRESERVED_AI_PROVIDER_KEY)
                 sessionStorage.clear()
                 if (preservedToken) {
                     sessionStorage.setItem(PRESERVED_OPENAI_TOKEN_KEY, preservedToken)
+                }
+                if (preservedGemini) {
+                    sessionStorage.setItem(PRESERVED_GEMINI_TOKEN_KEY, preservedGemini)
+                }
+                if (preservedProvider) {
+                    sessionStorage.setItem(PRESERVED_AI_PROVIDER_KEY, preservedProvider)
                 }
             }
             reloadApp()
@@ -236,9 +265,9 @@ export const ImportButton = (props: ImportButtonProps) => {
         deleteRequest.onerror = (error) => {
             console.error('Failed to reset database:', error)
             setIsResetting(false)
-            if (tokenToPreserve) {
-                sessionStorage.removeItem(PRESERVED_OPENAI_TOKEN_KEY)
-            }
+            sessionStorage.removeItem(PRESERVED_OPENAI_TOKEN_KEY)
+            sessionStorage.removeItem(PRESERVED_GEMINI_TOKEN_KEY)
+            sessionStorage.removeItem(PRESERVED_AI_PROVIDER_KEY)
         }
 
         deleteRequest.onblocked = () => {
@@ -248,6 +277,12 @@ export const ImportButton = (props: ImportButtonProps) => {
     }
 
     const items: MenuProps['items'] = [
+        {
+            key: 'ai-settings',
+            label: 'AI Settings',
+            icon: <KeyOutlined/>,
+            onClick: () => { setIsAiSettingsModalVisible(true) },
+        },
         {
             key: 'import',
             label: 'Import DB',
@@ -402,8 +437,17 @@ export const ImportButton = (props: ImportButtonProps) => {
                     onChange={(e) => { setPreserveToken(e.target.checked) }}
                     style={{ marginTop: '16px' }}
                 >
-                    Preserve OpenAI API token
+                    Preserve AI API tokens (Gemini & OpenAI)
                 </Checkbox>
+            </Modal>
+            <Modal
+                title='AI Provider & API Key Settings'
+                open={isAiSettingsModalVisible}
+                onCancel={() => { setIsAiSettingsModalVisible(false) }}
+                footer={null}
+                destroyOnClose
+            >
+                <ApiKeyInput onSaved={() => { setIsAiSettingsModalVisible(false) }}/>
             </Modal>
             <Modal
                 title='Import Database'
