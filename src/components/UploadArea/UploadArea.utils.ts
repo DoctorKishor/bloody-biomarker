@@ -113,10 +113,15 @@ export const createRecordsFromExtractedBiomarkers = async ({
                 originalValue: originalValue !== finalValue ? originalValue : undefined,
                 originalUnit: originalUnit !== finalUcum ? originalUnit : undefined,
                 originalName: biomarker.originalName ?? undefined,
+                referenceRange: biomarker.referenceRange,
+                referenceRangeString: typeof (biomarker as { referenceRangeString?: string }).referenceRangeString === 'string'
+                    ? (biomarker as { referenceRangeString?: string }).referenceRangeString
+                    : (typeof biomarker.referenceRange === 'string' ? biomarker.referenceRange : undefined),
                 approved: false,
                 latest: true,
                 order: biomarker.order ?? undefined,
                 page: biomarker.page ?? undefined,
+                boundingBox: biomarker.boundingBox ?? undefined,
                 createdAt: now,
                 updatedAt: now,
             }

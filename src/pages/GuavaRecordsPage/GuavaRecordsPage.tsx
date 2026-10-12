@@ -7,11 +7,7 @@ import {
     CloseOutlined,
     CheckOutlined,
     UserOutlined,
-    LeftOutlined,
-    RightOutlined,
-    EditOutlined,
 } from '@ant-design/icons'
-import { message } from 'antd'
 import dayjs from 'dayjs'
 
 import { GuavaLogo } from '@/components/GuavaHeader/GuavaHeader'
@@ -203,81 +199,8 @@ const SOURCES: SourceConfig[] = [
 /* Initial Records matching Screenshots 1 & 2                               */
 /* ------------------------------------------------------------------------- */
 
-const INITIAL_RECORDS: HealthRecordItem[] = [
-    {
-        id: 'rec-1',
-        year: 2024,
-        dateStr: 'Jan 6, 2024',
-        facilityName: 'Shanthi Social Services - Master health checkup',
-        title: 'Lab Result',
-        category: 'lab_tests',
-        source: 'uploaded_files',
-        isRecentlyAdded: true,
-    },
-    {
-        id: 'rec-2',
-        year: 2024,
-        dateStr: 'Jan 6, 2024',
-        facilityName: 'Shanthi Social Services - Master health checkup',
-        title: 'Lab Result',
-        category: 'lab_tests',
-        source: 'uploaded_files',
-        isRecentlyAdded: true,
-    },
-    {
-        id: 'rec-3',
-        year: 2024,
-        dateStr: 'Jan 6, 2024',
-        facilityName: 'Shanthi Social Services - Master health checkup',
-        title: 'Complete Blood Count',
-        category: 'lab_tests',
-        source: 'uploaded_files',
-        isRecentlyAdded: true,
-    },
-    {
-        id: 'rec-4',
-        year: 2024,
-        dateStr: 'Jan 6, 2024',
-        facilityName: 'Shanthi Social Services - Master health checkup',
-        title: 'ESR',
-        category: 'lab_tests',
-        source: 'uploaded_files',
-        isRecentlyAdded: true,
-    },
-    {
-        id: 'rec-5',
-        year: 2024,
-        dateStr: 'Jan 6, 2024',
-        facilityName: 'Shanthi Social Services - Master health checkup',
-        title: 'Complete Blood Count',
-        category: 'lab_tests',
-        source: 'uploaded_files',
-        isRecentlyAdded: true,
-    },
-    {
-        id: 'rec-6',
-        year: 2024,
-        dateStr: 'Jan 6, 2024',
-        facilityName: 'Shanthi Social Services - Master health checkup',
-        title: 'Lab Result',
-        category: 'lab_tests',
-        source: 'uploaded_files',
-        isRecentlyAdded: true,
-    },
-    {
-        id: 'rec-7',
-        year: 2024,
-        dateStr: 'Jan 6, 2024',
-        facilityName: 'Shanthi Social Services - Master health checkup',
-        title: 'Fasting Blood Sugar & Lipid Profile',
-        category: 'lab_tests',
-        source: 'uploaded_files',
-        isRecentlyAdded: true,
-    },
-]
-
 export const GuavaRecordsPage = (props: GuavaRecordsPageProps) => {
-    const { className, onAddResult } = props
+    const { className, onAddResult, onNavigateToBiomarkers, onNavigateToSources } = props
 
     const user = useCurrentUser()
     const { data: documents } = useDocuments({ filter: (d) => d.approved })
@@ -304,30 +227,59 @@ export const GuavaRecordsPage = (props: GuavaRecordsPageProps) => {
 
     // Preview Modal state
     const [previewRecord, setPreviewRecord] = useState<HealthRecordItem | null>(null)
-    const [previewPage, setPreviewPage] = useState(1)
-    const [isEditingReading, setIsEditingReading] = useState(false)
-    const [editValue, setEditValue] = useState('')
 
-    // Aggregate records with any real documents
+    // Aggregate records strictly from real database items (NO fake/dummy records)
     const allRecordsList = useMemo(() => {
-        const list: HealthRecordItem[] = [...INITIAL_RECORDS]
+        const list: HealthRecordItem[] = []
 
-        // Dynamically append any approved uploaded documents if not already in list
+        // Dynamically append any approved uploaded documents
         if (documents.length > 0) {
             documents.forEach((doc, idx) => {
                 const docRecordsCount = records.filter((r) => r.documentId === doc.id).length
-                const docName = (doc.originalName || doc.fileName || `Lab Report ${idx + 1}`).replace(/\.[^/.]+$/, '')
+                const docDate = doc.testDate ?? doc.createdAt ?? new Date()
+                const dateObj = new Date(docDate)
+                const docName = (doc.originalName ?? doc.fileName ?? `Lab Report ${idx + 1}`).replace(/\.[^/.]+$/, '')
+                const labName = doc.lab?.trim() ? doc.lab.trim() : 'Clinical Laboratory'
+
                 list.push({
                     id: doc.id,
-                    year: doc.createdAt ? new Date(doc.createdAt).getFullYear() : 2024,
-                    dateStr: doc.createdAt ? dayjs(doc.createdAt).format('MMM D, YYYY') : 'Jan 6, 2024',
-                    facilityName: 'Shanthi Social Services - Master health checkup',
+                    year: isNaN(dateObj.getFullYear()) ? new Date().getFullYear() : dateObj.getFullYear(),
+                    dateStr: dayjs(docDate).isValid() ? dayjs(docDate).format('MMM D, YYYY') : 'Recent',
+                    facilityName: labName,
                     title: docName,
                     category: 'lab_tests',
                     source: 'uploaded_files',
                     isRecentlyAdded: true,
                     documentId: doc.id,
                     biomarkerCount: docRecordsCount,
+                    previewImage: doc.thumbnailPath,
+                })
+            })
+        }
+
+        // Also include any manual records or unlinked readings if they exist
+        const unlinkedRecords = records.filter((r) => !r.documentId)
+        if (unlinkedRecords.length > 0) {
+            const groupedByDate: Record<string, typeof unlinkedRecords> = {}
+            unlinkedRecords.forEach((r) => {
+                const dStr = r.createdAt ? dayjs(r.createdAt).format('MMM D, YYYY') : 'Manual Entry'
+                if (!groupedByDate[dStr]) groupedByDate[dStr] = []
+                groupedByDate[dStr].push(r)
+            })
+
+            Object.entries(groupedByDate).forEach(([dStr, recs], idx) => {
+                const firstRec = recs[0]
+                const dObj = firstRec.createdAt ? new Date(firstRec.createdAt) : new Date()
+                list.push({
+                    id: `manual-group-${idx}`,
+                    year: isNaN(dObj.getFullYear()) ? new Date().getFullYear() : dObj.getFullYear(),
+                    dateStr: dStr,
+                    facilityName: 'Direct Health Entry',
+                    title: recs.length === 1 ? (recs[0].originalName ?? 'Biomarker Entry') : `Manual Health Entry (${recs.length} tests)`,
+                    category: 'lab_tests',
+                    source: 'data_entry',
+                    isRecentlyAdded: true,
+                    biomarkerCount: recs.length,
                 })
             })
         }
@@ -437,11 +389,6 @@ export const GuavaRecordsPage = (props: GuavaRecordsPageProps) => {
     const totalRecentlyAdded = useMemo(() => {
         return allRecordsList.filter((r) => r.isRecentlyAdded).length
     }, [allRecordsList])
-
-    const handleSaveReading = () => {
-        setIsEditingReading(false)
-        void message.success('Updated parameter reading')
-    }
 
     return (
         <div className={`w-full min-h-screen bg-[#f8faf9] flex flex-col ${className ?? ''}`}>
@@ -660,7 +607,6 @@ export const GuavaRecordsPage = (props: GuavaRecordsPageProps) => {
                                                 key={item.id}
                                                 onClick={() => {
                                                     setPreviewRecord(item)
-                                                    setIsEditingReading(false)
                                                 }}
                                                 className='py-3 sm:py-3.5 px-1 sm:px-2 flex items-center gap-3.5 sm:gap-4 hover:bg-[#f8faf9] rounded-xl cursor-pointer transition-colors group'
                                             >
@@ -820,115 +766,115 @@ export const GuavaRecordsPage = (props: GuavaRecordsPageProps) => {
             {/* ========================================================================= */}
             {/* 4. INTERACTIVE FILE PREVIEW SCREEN / MODAL                                 */}
             {/* ========================================================================= */}
-            {previewRecord && (
-                <div
-                    onClick={(e) => {
-                        if (e.target === e.currentTarget) {
-                            setPreviewRecord(null)
-                        }
-                    }}
-                    className='fixed inset-0 z-50 flex flex-col lg:items-center lg:justify-center bg-black/60 backdrop-blur-[1px] lg:p-4'
-                >
-                    <div className='w-full h-full lg:h-[88vh] lg:max-w-xl bg-[#0f172a] text-white lg:rounded-2xl shadow-2xl flex flex-col overflow-hidden'>
-                        {/* Top Bar with Pagination */}
-                        <div className='h-14 px-4 sm:px-5 flex items-center justify-between shrink-0 border-b border-white/10 bg-[#0f172a] z-20'>
-                            <button
-                                type='button'
-                                onClick={() => { setPreviewRecord(null) }}
-                                className='text-white hover:opacity-80 flex items-center gap-2 font-bold text-sm sm:text-base transition-opacity -ml-1'
-                            >
-                                <CloseOutlined className='text-base'/>
-                                <span>{previewRecord.title}</span>
-                            </button>
+            {previewRecord && (() => {
+                const currentDoc = documents.find((d) => d.id === previewRecord.documentId || d.id === previewRecord.id)
+                const previewImg = previewRecord.previewImage ?? currentDoc?.thumbnailPath
 
-                            {/* Pagination Tool */}
-                            <div className='bg-white/10 rounded-full px-3 py-1 flex items-center gap-2 text-xs font-semibold text-white'>
+                return (
+                    <div
+                        onClick={(e) => {
+                            if (e.target === e.currentTarget) {
+                                setPreviewRecord(null)
+                            }
+                        }}
+                        className='fixed inset-0 z-50 flex flex-col lg:items-center lg:justify-center bg-black/60 backdrop-blur-[1px] lg:p-4'
+                    >
+                        <div className='w-full h-full lg:h-[88vh] lg:max-w-2xl bg-[#0f172a] text-white lg:rounded-2xl shadow-2xl flex flex-col overflow-hidden'>
+                            {/* Top Bar */}
+                            <div className='h-14 px-4 sm:px-5 flex items-center justify-between shrink-0 border-b border-white/10 bg-[#0f172a] z-20'>
+                                <div className='flex items-center gap-2.5 min-w-0'>
+                                    <div className='w-7 h-7 rounded-lg bg-[#008272] text-white flex items-center justify-center shrink-0 text-xs font-bold'>
+                                        <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+                                            <path d='M10 2v7.31L4.03 20.02A1.8 1.8 0 0 0 5.6 22.5h12.8a1.8 1.8 0 0 0 1.57-2.48L14 9.31V2'/>
+                                            <line x1='8.5' y1='2' x2='15.5' y2='2'/>
+                                            <line x1='7' y1='16' x2='17' y2='16'/>
+                                        </svg>
+                                    </div>
+                                    <span className='font-bold text-sm sm:text-base text-white truncate'>{previewRecord.title}</span>
+                                </div>
+
                                 <button
                                     type='button'
-                                    onClick={() => { setPreviewPage((p) => Math.max(1, p - 1)) }}
-                                    className='hover:text-[#4ade80] p-0.5'
+                                    onClick={() => { setPreviewRecord(null) }}
+                                    className='w-8 h-8 rounded-lg hover:bg-white/10 text-white/70 hover:text-white flex items-center justify-center transition-colors'
+                                    title='Close'
                                 >
-                                    <LeftOutlined className='text-[10px]'/>
-                                </button>
-                                <span>Page {previewPage}/4</span>
-                                <button
-                                    type='button'
-                                    onClick={() => { setPreviewPage((p) => Math.min(4, p + 1)) }}
-                                    className='hover:text-[#4ade80] p-0.5'
-                                >
-                                    <RightOutlined className='text-[10px]'/>
+                                    <CloseOutlined className='text-base'/>
                                 </button>
                             </div>
-                        </div>
 
-                        {/* Document Scan with Illuminated Bounding Box */}
-                        <div className='flex-1 overflow-y-auto bg-black flex items-center justify-center p-3 relative'>
-                            <div className='relative max-w-full bg-white shadow-2xl rounded-xs'>
-                                <img
-                                    src='/sample-lab-report.png'
-                                    alt='Lab scan'
-                                    className='w-full max-h-[58vh] object-contain select-none'
-                                />
-                                <div
-                                    className='absolute border-2 border-[#3b82f6] bg-[#3b82f6]/30 rounded-xs pointer-events-none shadow-md transition-all'
-                                    style={{
-                                        top: '46.2%',
-                                        left: '14.5%',
-                                        width: '42%',
-                                        height: '2.8%',
-                                    }}
-                                />
+                            {/* Document Preview Body */}
+                            <div className='flex-1 overflow-y-auto bg-black flex items-center justify-center p-4 relative'>
+                                {previewImg ? (
+                                    <div className='relative max-w-full max-h-full flex items-center justify-center'>
+                                        <img
+                                            src={previewImg}
+                                            alt={previewRecord.title}
+                                            className='max-w-full max-h-[64vh] object-contain rounded-sm shadow-2xl select-none'
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className='flex flex-col items-center justify-center p-8 text-center max-w-sm'>
+                                        <div className='w-16 h-16 rounded-2xl bg-[#008272]/20 text-[#008272] flex items-center justify-center mb-4'>
+                                            <svg width='32' height='32' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+                                                <path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/>
+                                                <polyline points='14 2 14 8 20 8'/>
+                                                <line x1='16' y1='13' x2='8' y2='13'/>
+                                                <line x1='16' y1='17' x2='8' y2='17'/>
+                                                <polyline points='10 9 9 9 8 9'/>
+                                            </svg>
+                                        </div>
+                                        <h3 className='text-base font-bold text-white mb-1.5'>{previewRecord.title}</h3>
+                                        <p className='text-xs text-[#94a3b8] mb-3'>{previewRecord.facilityName} • {previewRecord.dateStr}</p>
+                                        <span className='inline-block bg-white/10 text-white/90 text-xs font-medium px-3 py-1 rounded-full'>
+                                            {previewRecord.biomarkerCount ?? 0} biomarker reading{previewRecord.biomarkerCount === 1 ? '' : 's'} recorded
+                                        </span>
+                                    </div>
+                                )}
                             </div>
-                        </div>
 
-                        {/* Bottom Info Bar with Option to Correct Reading */}
-                        <div className='p-3 sm:p-4 bg-[#1e293b] border-t border-white/10 shrink-0 flex flex-col gap-2.5'>
-                            <div className='flex items-center justify-between'>
-                                <div className='flex flex-col'>
-                                    <span className='text-xs font-bold text-white'>
+                            {/* Bottom Info Bar with Actions */}
+                            <div className='p-3 sm:p-4 bg-[#1e293b] border-t border-white/10 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3'>
+                                <div className='flex flex-col min-w-0'>
+                                    <span className='text-xs font-bold text-white truncate'>
                                         {previewRecord.facilityName}
                                     </span>
-                                    <span className='text-xs text-[#94a3b8] font-medium'>
-                                        {previewRecord.dateStr} • {previewRecord.title}
+                                    <span className='text-xs text-[#94a3b8] font-medium truncate'>
+                                        {previewRecord.dateStr} • {previewRecord.biomarkerCount ?? 0} biomarker reading{previewRecord.biomarkerCount === 1 ? '' : 's'}
                                     </span>
                                 </div>
 
-                                <button
-                                    type='button'
-                                    onClick={() => {
-                                        setEditValue('78')
-                                        setIsEditingReading(!isEditingReading)
-                                    }}
-                                    className='px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors'
-                                >
-                                    <EditOutlined className='text-xs'/>
-                                    <span>{isEditingReading ? 'Cancel' : 'Correct Reading'}</span>
-                                </button>
-                            </div>
-
-                            {/* Inline edit reading form */}
-                            {isEditingReading && (
-                                <div className='flex items-center gap-2 pt-1 animate-fade-in'>
-                                    <input
-                                        type='text'
-                                        value={editValue}
-                                        onChange={(e) => { setEditValue(e.target.value) }}
-                                        placeholder='Enter correct value'
-                                        className='flex-1 px-3 py-1.5 rounded-lg bg-black/40 border border-white/20 text-xs text-white focus:outline-none focus:border-blue-400'
-                                    />
-                                    <button
-                                        type='button'
-                                        onClick={handleSaveReading}
-                                        className='px-4 py-1.5 rounded-lg bg-[#008272] hover:bg-[#008272]/90 text-white text-xs font-bold transition-colors'
-                                    >
-                                        Save
-                                    </button>
+                                <div className='flex items-center gap-2 shrink-0'>
+                                    {onNavigateToBiomarkers && (
+                                        <button
+                                            type='button'
+                                            onClick={() => {
+                                                setPreviewRecord(null)
+                                                onNavigateToBiomarkers()
+                                            }}
+                                            className='px-3.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition-colors'
+                                        >
+                                            View Biomarkers
+                                        </button>
+                                    )}
+                                    {onNavigateToSources && (
+                                        <button
+                                            type='button'
+                                            onClick={() => {
+                                                setPreviewRecord(null)
+                                                onNavigateToSources()
+                                            }}
+                                            className='px-3.5 py-1.5 rounded-lg bg-[#008272] hover:bg-[#007062] text-xs font-bold text-white transition-colors'
+                                        >
+                                            View in Sources
+                                        </button>
+                                    )}
                                 </div>
-                            )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            })()}
         </div>
     )
 }

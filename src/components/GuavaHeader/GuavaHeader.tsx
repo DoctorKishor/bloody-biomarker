@@ -13,7 +13,8 @@ import { ImportButton } from '@/components/ImportButton'
 import { useBiomarkerConfigs } from '@/db/models/biomarkerConfig'
 import { useBiomarkerRecords } from '@/db/models/biomarkerRecord'
 import { useDocuments } from '@/db/models/document'
-import { useCurrentUser } from '@/db/models/user'
+import { useCurrentUser, useUsers } from '@/db/models/user'
+import { switchActiveUserId } from '@/db/services/db.service'
 import { exportData } from '@/utils/exportData'
 
 import { GuavaHeaderProps, GuavaNavTab } from './GuavaHeader.types'
@@ -77,7 +78,37 @@ export const GuavaHeader = (props: GuavaHeaderProps) => {
         })
     }
 
+    const { data: allProfiles = [] } = useUsers()
+
     const menuItems: MenuProps['items'] = [
+        ...(allProfiles.length > 0 ? [
+            {
+                key: 'profiles-header',
+                label: <span className='text-[10px] font-bold text-[#64748b] uppercase tracking-wider'>Profiles</span>,
+                disabled: true,
+            },
+            ...allProfiles.map((prof) => ({
+                key: `switch-profile-${prof.id}`,
+                icon: <UserOutlined/>,
+                label: (
+                    <div className='flex items-center justify-between gap-3'>
+                        <span className={prof.id === user?.id ? 'font-bold text-[#0d9468]' : 'text-[#334155]'}>
+                            {prof.name ?? 'Unnamed'}
+                        </span>
+                        {prof.id === user?.id && <span className='text-[#0d9468] text-xs font-bold'>Active</span>}
+                    </div>
+                ),
+                onClick: () => {
+                    if (prof.id !== user?.id) {
+                        switchActiveUserId(prof.id)
+                        void message.success(`Switched to profile: ${prof.name ?? 'User'}`)
+                    }
+                },
+            })),
+            {
+                type: 'divider' as const,
+            },
+        ] : []),
         {
             key: 'ai-config',
             label: 'AI & API Settings',

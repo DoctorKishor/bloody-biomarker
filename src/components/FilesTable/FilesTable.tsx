@@ -8,8 +8,9 @@ import cn from 'classnames'
 import { usePostHog } from 'posthog-js/react'
 
 import { dateComparator } from '@/aggrid/comparators/dateComprator'
+import { DeleteDocumentModal } from '@/components/DeleteDocumentModal'
 import { PdfViewer } from '@/components/PdfViewer'
-import { deleteDocument, useDocuments } from '@/db/models/document'
+import { deleteDocumentWithCascade, useDocuments } from '@/db/models/document'
 import { formatFileSize } from '@/db/models/document/document.utils'
 import { captureEvent } from '@/utils'
 
@@ -32,10 +33,22 @@ export const FilesTable = (props: FilesTableProps) => {
     const { data: documents } = useDocuments()
     const posthog = usePostHog()
     const [selectedDocument, setSelectedDocument] = useState<FileRowData | null>(null)
+    const [docToDelete, setDocToDelete] = useState<FileRowData | null>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
 
-    const handleDelete = useCallback(async (id: string) => {
-        await deleteDocument(id)
-    }, [])
+    const handleConfirmDelete = useCallback(async (deleteRelatedData: boolean) => {
+        if (!docToDelete) return
+        setIsDeleting(true)
+        try {
+            await deleteDocumentWithCascade({
+                documentId: docToDelete.id,
+                deleteRelatedData,
+            })
+            setDocToDelete(null)
+        } finally {
+            setIsDeleting(false)
+        }
+    }, [docToDelete])
 
     const handleDownload = useCallback((fileData: ArrayBuffer | undefined, originalName: string) => {
         if (!fileData) return
@@ -92,13 +105,13 @@ export const FilesTable = (props: FilesTableProps) => {
                 danger
                 icon={<DeleteOutlined/>}
                 onClick={() => {
-                    if (cellProps.data?.id) {
-                        void handleDelete(cellProps.data.id)
+                    if (cellProps.data) {
+                        setDocToDelete(cellProps.data)
                     }
                 }}
             />
         ))
-    }, [handleDelete])
+    }, [])
 
     const columnDefs = useMemo<Array<ColDef<FileRowData>>>(() => [
         {
@@ -200,6 +213,17 @@ export const FilesTable = (props: FilesTableProps) => {
                     />
                 )}
             </Modal>
+            <DeleteDocumentModal
+                open={!!docToDelete}
+                documentName={docToDelete?.originalName}
+                isDeleting={isDeleting}
+                onClose={() => {
+                    if (!isDeleting) {
+                        setDocToDelete(null)
+                    }
+                }}
+                onConfirm={handleConfirmDelete}
+            />
         </>
     )
 }

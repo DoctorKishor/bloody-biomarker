@@ -1,13 +1,18 @@
+/* eslint-disable no-restricted-imports */
 import { useEffect } from 'react'
 
 import { useLiveQuery } from 'dexie-react-hooks'
-import { v4 as uuidv4 } from 'uuid'
 
 import { createModelHooks } from '@/db/hooks/modelHooks.utils'
-// eslint-disable-next-line no-restricted-imports
-import { setCurrentUserId, db, getIsImporting } from '@/db/services/db.service'
+import { useActiveUserId } from '@/db/hooks/useActiveUserId'
+import {
+    db,
+    getCurrentUserIdSync,
+    getIsImporting,
+    setCurrentUserId,
+} from '@/db/services/db.service'
 
-import { User } from './user.types'
+import { getOrCreateUser } from './user.utils'
 
 export const {
     useItems: useUsers,
@@ -17,40 +22,17 @@ export const {
     removeItem: deleteUser,
 } = createModelHooks(db.users)
 
-const getOrCreateUser = async (): Promise<User | null> => {
-    if (getIsImporting()) {
-        return null
-    }
-
-    return await db.transaction('rw', db.users, async () => {
-        const existingUser = await db.users.limit(1).first()
-        if (existingUser) {
-            return existingUser
-        }
-
-        const newUser: User = {
-            id: uuidv4(),
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        }
-        await db.users.add(newUser)
-        return newUser
-    })
-}
-
-export const getCurrentUserId = async (): Promise<string> => {
-    const user = await getOrCreateUser()
-    if (!user) {
-        throw new Error('Cannot get user ID during import')
-    }
-    return user.id
-}
-
 export const useCurrentUser = () => {
+    const activeUserId = useActiveUserId()
+
     const user = useLiveQuery(async () => {
+        if (activeUserId) {
+            const matched = await db.users.get(activeUserId)
+            if (matched) return matched
+        }
         const users = await db.users.toArray()
         return users[0] || null
-    })
+    }, [activeUserId])
 
     useEffect(() => {
         if (!user && !getIsImporting()) {
@@ -62,7 +44,16 @@ export const useCurrentUser = () => {
                 console.error('Failed to get or create user:', error)
             })
         } else if (user?.id) {
-            setCurrentUserId(user.id)
+            if (getCurrentUserIdSync() !== user.id) {
+                setCurrentUserId(user.id)
+            }
+            if (!user.gender || user.age === undefined) {
+                void db.users.update(user.id, {
+                    age: user.age ?? 35,
+                    gender: user.gender ?? 'male',
+                    updatedAt: new Date(),
+                })
+            }
         }
     }, [user])
 

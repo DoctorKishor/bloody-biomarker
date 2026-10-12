@@ -26,8 +26,13 @@ import {
     PictureOutlined,
 } from '@ant-design/icons'
 import { Dropdown, message, Modal } from 'antd'
+import dayjs from 'dayjs'
 
+import { DeleteDocumentModal } from '@/components/DeleteDocumentModal'
 import { GuavaLogo } from '@/components/GuavaHeader/GuavaHeader'
+import { useBiomarkerRecords } from '@/db/models/biomarkerRecord'
+import { deleteDocumentWithCascade, useDocuments } from '@/db/models/document'
+import { useCurrentUser } from '@/db/models/user'
 
 import {
     ExtractedLabGroup,
@@ -37,587 +42,27 @@ import {
     SourcesCategory,
 } from './GuavaSourcesPage.types'
 
-const INITIAL_FILES: SourceAttachmentFile[] = [
-    {
-        id: 'file-1',
-        name: 'Image-851183569739-164720.jpg',
-        uploadDate: '01/06/2024',
-        size: '2.78 MB',
-    },
-    {
-        id: 'file-2',
-        name: 'Image-851183569739-164720(1).jpg',
-        uploadDate: '01/06/2024',
-        size: '2.61 MB',
-    },
-    {
-        id: 'file-3',
-        name: 'Image-851183569739-164720(2).jpg',
-        uploadDate: '01/06/2024',
-        size: '2.49 MB',
-    },
-    {
-        id: 'file-4',
-        name: 'Image-851183569739-164720(3).jpg',
-        uploadDate: '01/06/2024',
-        size: '2.41 MB',
-    },
-]
+const INITIAL_FILES: SourceAttachmentFile[] = []
 
-const INITIAL_LAB_GROUPS: ExtractedLabGroup[] = [
-    {
-        id: 'group-lab-results',
-        title: 'LAB RESULTS',
-        date: 'January 6, 2024',
-        items: [
-            {
-                id: 'lr-1',
-                name: 'Fasting Glucose',
-                value: '91',
-                unit: 'mg/dL',
-                refRange: '< 100',
-                isAuto: true,
-            },
-            {
-                id: 'lr-2',
-                name: 'Blood Urea',
-                value: '15',
-                unit: 'mg/dL',
-                refRange: '17 - 43',
-                isAuto: true,
-            },
-            {
-                id: 'lr-3',
-                name: 'Creatinine',
-                value: '0.69',
-                unit: 'mg/dL',
-                refRange: '0.84 - 1.25',
-                isAuto: true,
-            },
-            {
-                id: 'lr-4',
-                name: 'eGFR',
-                value: '151.03',
-                unit: 'mL/min/1.73m2',
-                refRange: '> 60',
-                isAuto: true,
-            },
-            {
-                id: 'lr-5',
-                name: 'Uric Acid',
-                value: '5.68',
-                unit: 'mg/dL',
-                refRange: '3.5 - 7.2',
-                isAuto: true,
-            },
-            {
-                id: 'lr-6',
-                name: 'Total Cholesterol',
-                value: '248',
-                unit: 'mg/dL',
-                refRange: '< 200',
-                isAuto: true,
-            },
-            {
-                id: 'lr-7',
-                name: 'Triglycerides',
-                value: '78',
-                unit: 'mg/dL',
-                refRange: '< 150',
-                isAuto: true,
-            },
-            {
-                id: 'lr-8',
-                name: 'HDL Cholesterol',
-                value: '55',
-                unit: 'mg/dL',
-                refRange: '> 40',
-                isAuto: true,
-            },
-            {
-                id: 'lr-9',
-                name: 'Non-HDL Cholesterol',
-                value: '193',
-                unit: 'mg/dL',
-                refRange: '< 130',
-                isAuto: true,
-            },
-            {
-                id: 'lr-10',
-                name: 'LDL Cholesterol',
-                value: '186',
-                unit: 'mg/dL',
-                refRange: '< 100',
-                isAuto: true,
-            },
-            {
-                id: 'lr-11',
-                name: 'VLDL Cholesterol',
-                value: '16',
-                unit: 'mg/dL',
-                refRange: '< 30',
-                isAuto: true,
-            },
-            {
-                id: 'lr-12',
-                name: 'Direct Bilirubin',
-                value: '0.19',
-                unit: 'mg/dL',
-                refRange: '0 - 0.2',
-                isAuto: true,
-            },
-            {
-                id: 'lr-13',
-                name: 'Bilirubin, Indirect, Blood',
-                value: '0.97',
-                unit: 'mg/dL',
-                refRange: '0.2 - 0.8',
-                isAuto: true,
-            },
-            {
-                id: 'lr-14',
-                name: 'Bilirubin, Total, Serum',
-                value: '1.16',
-                unit: 'mg/dL',
-                refRange: '0.3 - 1.2',
-                isAuto: true,
-            },
-            {
-                id: 'lr-15',
-                name: 'SGOT / AST',
-                value: '19',
-                unit: 'U/L',
-                refRange: '< 40',
-                isAuto: true,
-            },
-            {
-                id: 'lr-16',
-                name: 'SGPT / ALT',
-                value: '20',
-                unit: 'U/L',
-                refRange: '< 41',
-                isAuto: true,
-            },
-            {
-                id: 'lr-17',
-                name: 'Alkaline Phosphatase (ALP)',
-                value: '208',
-                unit: 'U/L',
-                refRange: '40 - 129',
-                isAuto: true,
-            },
-            {
-                id: 'lr-18',
-                name: 'Total Protein, Serum',
-                value: '7.51',
-                unit: 'g/dL',
-                refRange: '6.6 - 8.3',
-                isAuto: true,
-            },
-            {
-                id: 'lr-19',
-                name: 'Albumin',
-                value: '4.9',
-                unit: 'g/dL',
-                refRange: '3.5 - 5.2',
-                isAuto: true,
-            },
-            {
-                id: 'lr-20',
-                name: 'Globulin',
-                value: '2.61',
-                unit: 'g/dL',
-                refRange: '2 - 3.5',
-                isAuto: true,
-            },
-            {
-                id: 'lr-21',
-                name: 'A/G Ratio',
-                value: '1.88',
-                unit: '',
-                refRange: '1.1 - 2.2',
-                isAuto: true,
-            },
-            {
-                id: 'lr-22',
-                name: 'Calcium, Total',
-                value: '9.4',
-                unit: 'mg/dL',
-                refRange: '8.6 - 10.2',
-                isAuto: true,
-            },
-            {
-                id: 'lr-23',
-                name: 'Phosphorus',
-                value: '4.1',
-                unit: 'mg/dL',
-                refRange: '2.5 - 4.5',
-                isAuto: true,
-            },
-            {
-                id: 'lr-24',
-                name: 'Sodium, Serum',
-                value: '138.2',
-                unit: 'mmol/L',
-                refRange: '136 - 145',
-                isAuto: true,
-            },
-            {
-                id: 'lr-25',
-                name: 'Potassium',
-                value: '4.5',
-                unit: 'mmol/L',
-                refRange: '3.5 - 5.1',
-                isAuto: true,
-            },
-            {
-                id: 'lr-26',
-                name: 'Chloride',
-                value: '102',
-                unit: 'mmol/L',
-                refRange: '98 - 107',
-                isAuto: true,
-            },
-            {
-                id: 'lr-27',
-                name: 'Bicarbonate',
-                value: '24',
-                unit: 'mmol/L',
-                refRange: '22 - 29',
-                isAuto: true,
-            },
-            {
-                id: 'lr-28',
-                name: 'Estimated Glomerular Filtration Rate (eGFR) Non-African American (CKD-EPI)',
-                value: '151.03',
-                unit: '',
-                refRange: '> 60',
-                isAuto: true,
-            },
-        ],
-    },
-    {
-        id: 'group-cbc-1',
-        title: 'Complete Blood Count',
-        date: 'January 6, 2024',
-        items: [
-            {
-                id: 'cbc-1',
-                name: 'Hemoglobin',
-                value: '14.9',
-                unit: 'g/dL',
-                refRange: '13 - 17',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-2',
-                name: 'Hematocrit',
-                value: '44.5',
-                unit: '%',
-                refRange: '40 - 50',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-3',
-                name: 'White Blood Cell (WBC) Count',
-                value: '7,700',
-                unit: '/uL',
-                refRange: '4,000 - 11,000',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-4',
-                name: 'Red Blood Cell Count',
-                value: '5.04',
-                unit: 'M/uL',
-                refRange: '4.5 - 5.5',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-5',
-                name: 'Platelet Count',
-                value: '236',
-                unit: 'K/uL',
-                refRange: '150 - 450',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-6',
-                name: 'Neutrophils',
-                value: '57',
-                unit: '%',
-                refRange: '40 - 70',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-7',
-                name: 'Lymphocytes',
-                value: '34',
-                unit: '%',
-                refRange: '20 - 40',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-8',
-                name: 'Monocytes',
-                value: '5.4',
-                unit: '%',
-                refRange: '2 - 8',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-9',
-                name: 'Eosinophils',
-                value: '3.1',
-                unit: '%',
-                refRange: '1 - 6',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-10',
-                name: 'Basophils',
-                value: '0.5',
-                unit: '%',
-                refRange: '0 - 1',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-11',
-                name: 'Mean Platelet Volume',
-                value: '10.4',
-                unit: 'fL',
-                refRange: '',
-                isAuto: true,
-            },
-        ],
-    },
-    {
-        id: 'group-cbc-2',
-        title: 'Complete Blood Count',
-        date: 'January 6, 2024',
-        items: [
-            {
-                id: 'cbc-12',
-                name: 'MCV',
-                value: '88.3',
-                unit: 'fL',
-                refRange: '83 - 101',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-13',
-                name: 'MCH',
-                value: '29.6',
-                unit: 'pg',
-                refRange: '27 - 32',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-14',
-                name: 'MCHC',
-                value: '33.5',
-                unit: 'g/dL',
-                refRange: '31.5 - 34.5',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-15',
-                name: 'Red Cell Distribution Width (RDW)',
-                value: '12.7',
-                unit: '%',
-                refRange: '11.6 - 14',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-16',
-                name: 'Total Leukocyte Count',
-                value: '7,700',
-                unit: '/uL',
-                refRange: '4,000 - 11,000',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-17',
-                name: 'Neutrophils (Absolute)',
-                value: '4,389',
-                unit: '/uL',
-                refRange: '2,000 - 7,000',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-18',
-                name: 'Lymphocytes (Absolute)',
-                value: '2,618',
-                unit: '/uL',
-                refRange: '1,000 - 3,000',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-19',
-                name: 'Monocytes (Absolute)',
-                value: '416',
-                unit: '/uL',
-                refRange: '200 - 1,000',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-20',
-                name: 'Eosinophils (Absolute)',
-                value: '239',
-                unit: '/uL',
-                refRange: '20 - 500',
-                isAuto: true,
-            },
-            {
-                id: 'cbc-21',
-                name: 'Basophils (Absolute)',
-                value: '38',
-                unit: '/uL',
-                refRange: '20 - 100',
-                isAuto: true,
-            },
-        ],
-    },
-    {
-        id: 'group-esr',
-        title: 'ESR RESULTS',
-        date: 'January 6, 2024',
-        items: [
-            {
-                id: 'esr-1',
-                name: 'ESR',
-                value: '7',
-                unit: 'mm/h',
-                refRange: '0 - 15',
-                isAuto: true,
-            },
-        ],
-    },
-    {
-        id: 'group-urine-1',
-        title: 'Complete Urine Count',
-        date: 'January 6, 2024',
-        items: [
-            {
-                id: 'ur-1',
-                name: 'Color, Urine',
-                value: 'Pale Yellow',
-                unit: '',
-                refRange: '',
-                isAuto: true,
-            },
-            {
-                id: 'ur-2',
-                name: 'Appearance, Urine',
-                value: 'Clear',
-                unit: '',
-                refRange: '',
-                isAuto: true,
-            },
-            {
-                id: 'ur-3',
-                name: 'pH, Urine',
-                value: '6.0',
-                unit: '',
-                refRange: '5 - 8',
-                isAuto: true,
-            },
-            {
-                id: 'ur-4',
-                name: 'Specific Gravity, Urine',
-                value: '1.015',
-                unit: '',
-                refRange: '1.005 - 1.03',
-                isAuto: true,
-            },
-            {
-                id: 'ur-5',
-                name: 'Albumin, Urine',
-                value: 'Negative',
-                unit: '',
-                refRange: '',
-                isAuto: true,
-            },
-        ],
-    },
-    {
-        id: 'group-urine-2',
-        title: 'Lab Results',
-        date: 'January 6, 2024',
-        items: [
-            {
-                id: 'ur-6',
-                name: 'Protein, Urine',
-                value: 'Negative',
-                unit: '',
-                refRange: '',
-                isAuto: true,
-            },
-            {
-                id: 'ur-7',
-                name: 'Blood / Hemoglobin, Urine',
-                value: 'Not Detected',
-                unit: '',
-                refRange: '',
-                isAuto: true,
-            },
-            {
-                id: 'ur-8',
-                name: 'Bilirubin, Urine',
-                value: 'Negative',
-                unit: '',
-                refRange: '',
-                isAuto: true,
-            },
-            {
-                id: 'ur-9',
-                name: 'Urobilinogen (Urine)',
-                value: 'Normal',
-                unit: '',
-                refRange: '',
-                isAuto: true,
-            },
-            {
-                id: 'ur-10',
-                name: 'Pus Cells (Microscopic Examination)',
-                value: '0-1',
-                unit: '/hpf',
-                refRange: '0 - 5',
-                isAuto: true,
-            },
-            {
-                id: 'ur-11',
-                name: 'Epithelial Cells',
-                value: '0-1',
-                unit: '',
-                refRange: '',
-                isAuto: true,
-            },
-            {
-                id: 'ur-12',
-                name: 'RBCs, Urine',
-                value: 'Nil',
-                unit: '',
-                refRange: '',
-                isAuto: true,
-            },
-            {
-                id: 'ur-13',
-                name: 'Casts, Urine',
-                value: 'Nil',
-                unit: '',
-                refRange: '',
-                isAuto: true,
-            },
-        ],
-    },
-]
+const INITIAL_LAB_GROUPS: ExtractedLabGroup[] = []
 
 // Helper for exact bounding boxes on the report image
 const getParamBoundingBox = (name: string, index: number) => {
     const map: Record<string, { top: string, left: string, width: string, height: string }> = {
         'Fasting Glucose': {
             top: '22.8%',
+            left: '15.5%',
+            width: '28%',
+            height: '2.4%',
+        },
+        'Glucose - Fasting': {
+            top: '22.8%',
+            left: '15.5%',
+            width: '28%',
+            height: '2.4%',
+        },
+        'Glucose - Post Prandial': {
+            top: '26.2%',
             left: '15.5%',
             width: '28%',
             height: '2.4%',
@@ -764,9 +209,94 @@ export interface GuavaSourcesPageProps {
 
 export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPageProps) => {
     const fileUploadInputId = useId()
+    const { data: dbDocuments = [] } = useDocuments()
+    const { data: dbRecords = [] } = useBiomarkerRecords()
+    const currentUser = useCurrentUser()
+    const userInitials = currentUser?.name
+        ? currentUser.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+        : 'U'
+
     const [selectedCategory, setSelectedCategory] = useState<SourcesCategory>('uploads')
     const [files, setFiles] = useState<SourceAttachmentFile[]>(INITIAL_FILES)
     const [labGroups, setLabGroups] = useState<ExtractedLabGroup[]>(INITIAL_LAB_GROUPS)
+    const [selectedFileId, setSelectedFileId] = useState<string>('')
+
+    // Document Delete Modal state
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+    const [fileToDelete, setFileToDelete] = useState<SourceAttachmentFile | null>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
+
+    // Merge uploaded documents from DB with local files
+    const allFiles = useMemo(() => {
+        const list: SourceAttachmentFile[] = [...files]
+        if (dbDocuments.length > 0) {
+            dbDocuments.forEach((doc, idx) => {
+                if (!list.some(f => f.id === doc.id || f.documentId === doc.id)) {
+                    list.push({
+                        id: doc.id,
+                        documentId: doc.id,
+                        name: doc.originalName ?? doc.fileName ?? `Lab Report ${idx + 1}`,
+                        uploadDate: doc.createdAt ? dayjs(doc.createdAt).format('MM/DD/YYYY') : '',
+                        size: doc.fileSize ? `${(doc.fileSize / (1024 * 1024)).toFixed(2)} MB` : '—',
+                        previewImage: doc.thumbnailPath ?? '',
+                        provider: doc.lab ?? '',
+                        date: doc.testDate ? dayjs(doc.testDate).format('MM / DD / YYYY') : (doc.createdAt ? dayjs(doc.createdAt).format('MM / DD / YYYY') : ''),
+                        notes: doc.notes ?? '',
+                        pageNumber: 1,
+                    })
+                }
+            })
+        }
+        return list
+    }, [files, dbDocuments])
+
+    const currentSelectedFile = useMemo(() => {
+        if (allFiles.length === 0) return null
+        return allFiles.find((f) => f.id === selectedFileId) ?? allFiles[0]
+    }, [allFiles, selectedFileId])
+
+    const activeFileIndex = useMemo(() => {
+        if (!currentSelectedFile) return -1
+        return allFiles.findIndex((f) => f.id === currentSelectedFile.id)
+    }, [allFiles, currentSelectedFile])
+
+    // Lab groups filtered strictly to the selected file!
+    const activeLabGroups = useMemo<ExtractedLabGroup[]>(() => {
+        if (!currentSelectedFile) return []
+
+        const matchingMock = labGroups.filter((g) => g.fileId === currentSelectedFile.id)
+        if (matchingMock.length > 0) {
+            return matchingMock
+        }
+
+        const targetDocId = currentSelectedFile.documentId ?? currentSelectedFile.id
+        const matchingDb = dbRecords.filter((r) => r.documentId === targetDocId)
+        if (matchingDb.length > 0) {
+            const items: ExtractedLabItem[] = matchingDb.map((r, idx): ExtractedLabItem => ({
+                id: r.id ?? `rec-${idx}`,
+                name: r.originalName ?? 'Biomarker',
+                value: r.originalValue !== undefined ? String(r.originalValue) : (r.value !== undefined ? String(r.value) : (r.textValue ?? '')),
+                unit: r.originalUnit ?? r.ucumCode,
+                refRange: r.referenceRangeString ?? (r.referenceRange ? `${r.referenceRange.min ?? ''} - ${r.referenceRange.max ?? ''}` : ''),
+                isAuto: true,
+            }))
+            return [
+                {
+                    id: `group-db-${targetDocId}`,
+                    fileId: currentSelectedFile.id,
+                    title: (currentSelectedFile.name ?? 'EXTRACTED LAB RESULTS').replace(/\.[^/.]+$/, '').toUpperCase(),
+                    date: currentSelectedFile.uploadDate,
+                    items,
+                },
+            ]
+        }
+
+        return []
+    }, [currentSelectedFile, labGroups, dbRecords])
+
+    const activeExtractedCount = useMemo(() => {
+        return activeLabGroups.reduce((acc, g) => acc + g.items.length, 0)
+    }, [activeLabGroups])
 
     // Mobile Navigation state matching Screenshots 1 -> 2 -> 3 -> 4
     const [mobileScreen, setMobileScreen] = useState<MobileSourcesScreen>('sources_home')
@@ -781,8 +311,8 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
     const [editParamNotes, setEditParamNotes] = useState('')
 
     // Document Form state
-    const [docDate, setDocDate] = useState('01 / 06 / 2024')
-    const [providerName, setProviderName] = useState('Shanthi Social Services - Master Health Checkup')
+    const [docDate, setDocDate] = useState('')
+    const [providerName, setProviderName] = useState('')
     const [notes, setNotes] = useState('')
     const [categoryDiagnostic, setCategoryDiagnostic] = useState(false)
     const [categoryRecords, setCategoryRecords] = useState(false)
@@ -801,17 +331,59 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
     const [newTestUnit, setNewTestUnit] = useState('')
     const [newTestRef, setNewTestRef] = useState('')
 
-    // Flatten all items for sequential navigation
-    const allFlatParams = useMemo(() => {
-        return labGroups.flatMap((group) => group.items)
-    }, [labGroups])
+    // Flatten items for active group only
+    const allFlatParams = useMemo<ExtractedLabItem[]>(() => {
+        return activeLabGroups.flatMap((group) => group.items)
+    }, [activeLabGroups])
 
     const totalExtractedCount = allFlatParams.length
-    const currentActiveParam = allFlatParams[focusedParamIndex] ?? allFlatParams[0]
+    const currentActiveParam: ExtractedLabItem | undefined = allFlatParams[focusedParamIndex] ?? allFlatParams[0]
 
-    const handleDeleteFile = (id: string) => {
-        setFiles((prev) => prev.filter((f) => f.id !== id))
-        void message.success('Attachment removed')
+    const handleInitiateDelete = (file: SourceAttachmentFile) => {
+        setFileToDelete(file)
+        setIsDeleteModalOpen(true)
+    }
+
+    const handleConfirmDelete = async (deleteRelatedData: boolean) => {
+        if (!fileToDelete) return
+        setIsDeleting(true)
+        try {
+            const targetDocId = fileToDelete.documentId ?? fileToDelete.id
+
+            await deleteDocumentWithCascade({
+                documentId: targetDocId,
+                deleteRelatedData,
+            })
+
+            setFiles((prev) => prev.filter((f) => f.id !== fileToDelete.id && f.id !== targetDocId))
+
+            if (deleteRelatedData) {
+                setLabGroups((prev) => prev.filter((g) => g.fileId !== fileToDelete.id && g.fileId !== targetDocId))
+            }
+
+            const remaining = allFiles.filter((f) => f.id !== fileToDelete.id && f.id !== targetDocId)
+            if (remaining.length > 0) {
+                const nextFile = remaining[0]
+                setSelectedFileId(nextFile.id)
+                if (nextFile.date) setDocDate(nextFile.date)
+                if (nextFile.provider) setProviderName(nextFile.provider)
+                if (nextFile.notes !== undefined) setNotes(nextFile.notes)
+            }
+
+            setIsDeleteModalOpen(false)
+            setFileToDelete(null)
+
+            if (deleteRelatedData) {
+                void message.success(`Deleted "${fileToDelete.name}" and cleared all related records from DB.`)
+            } else {
+                void message.success(`Removed "${fileToDelete.name}". Associated DB records preserved.`)
+            }
+        } catch (err) {
+            console.error('Failed to delete document:', err)
+            void message.error('Failed to delete document')
+        } finally {
+            setIsDeleting(false)
+        }
     }
 
     const handleAddImages = () => {
@@ -826,7 +398,7 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
             const newFilesList: SourceAttachmentFile[] = Array.from(e.target.files).map((file, idx) => ({
                 id: `new-${Date.now()}-${idx}`,
                 name: file.name,
-                uploadDate: '01/06/2024',
+                uploadDate: dayjs().format('MM/DD/YYYY'),
                 size: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
             }))
             setFiles((prev) => [...prev, ...newFilesList])
@@ -839,9 +411,9 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
     }
 
     const handleCancelDoc = () => {
-        setDocDate('01 / 06 / 2024')
-        setProviderName('Shanthi Social Services - Master Health Checkup')
-        setNotes('')
+        setDocDate(currentSelectedFile?.date ?? '')
+        setProviderName(currentSelectedFile?.provider ?? '')
+        setNotes(currentSelectedFile?.notes ?? '')
         setCategoryDiagnostic(false)
         setCategoryRecords(false)
         void message.info('Changes discarded')
@@ -993,6 +565,13 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
         return getParamBoundingBox(currentActiveParam.name, focusedParamIndex)
     }, [currentActiveParam, focusedParamIndex])
 
+    const desktopSingleHighlightBox = useMemo(() => {
+        const foundItem = allFlatParams.find((p) => p.id === desktopActiveParamId)
+        const name = foundItem?.name ?? 'Uric Acid'
+        const idx = allFlatParams.findIndex((p) => p.id === desktopActiveParamId)
+        return getParamBoundingBox(name, idx >= 0 ? idx : 0)
+    }, [allFlatParams, desktopActiveParamId])
+
     return (
         <div className={`min-h-screen bg-[#f8faf9] text-[#192823] w-full pb-20 ${className ?? ''}`}>
             {/* Hidden file input for adding images */}
@@ -1026,7 +605,7 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
                                 <span className='w-5 h-5 rounded-full bg-[#5f736b] text-white flex items-center justify-center text-[10px]'>
                                     <UserOutlined/>
                                 </span>
-                                <span>DA</span>
+                                <span>{userInitials}</span>
                             </div>
                         </div>
 
@@ -1068,7 +647,7 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
                                                 File Uploads
                                             </span>
                                             <span className='text-xs text-[#64748b]'>
-                                                {files.length} file{files.length === 1 ? '' : 's'} uploaded
+                                                {allFiles.length} file{allFiles.length === 1 ? '' : 's'} uploaded
                                             </span>
                                         </div>
                                     </div>
@@ -1223,23 +802,35 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
                                 <h2 className='text-base font-bold text-[#0f172a]'>
                                     Recent Documents
                                 </h2>
-                                <div
-                                    onClick={() => { setMobileScreen('document_details') }}
-                                    className='rounded-2xl border border-[#e5ece8] bg-white p-4 flex items-center gap-3.5 cursor-pointer shadow-2xs hover:bg-[#f8faf9] active:bg-[#f1f5f3] transition-colors'
-                                >
-                                    <div className='w-10 h-10 rounded-xl bg-[#2563eb] text-white flex items-center justify-center text-lg shrink-0 shadow-xs'>
-                                        <PictureOutlined/>
+                                {allFiles.length > 0 ? (
+                                    allFiles.map((doc) => (
+                                        <div
+                                            key={doc.id}
+                                            onClick={() => {
+                                                setSelectedFileId(doc.id)
+                                                setMobileScreen('document_details')
+                                            }}
+                                            className='rounded-2xl border border-[#e5ece8] bg-white p-4 flex items-center gap-3.5 cursor-pointer shadow-2xs hover:bg-[#f8faf9] active:bg-[#f1f5f3] transition-colors'
+                                        >
+                                            <div className='w-10 h-10 rounded-xl bg-[#2563eb] text-white flex items-center justify-center text-lg shrink-0 shadow-xs'>
+                                                <PictureOutlined/>
+                                            </div>
+                                            <div className='flex flex-col min-w-0 flex-1'>
+                                                <span className='text-sm font-bold text-[#0f172a] truncate'>
+                                                    {doc.name}
+                                                </span>
+                                                <span className='text-xs text-[#64748b]'>
+                                                    {doc.uploadDate || doc.size}
+                                                </span>
+                                            </div>
+                                            <ChevronRightOutlined className='text-xs text-[#94a3b8] shrink-0'/>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className='p-4 text-center rounded-2xl border border-dashed border-[#cbd5e1] bg-white text-xs text-[#64748b]'>
+                                        No recent documents uploaded yet
                                     </div>
-                                    <div className='flex flex-col min-w-0 flex-1'>
-                                        <span className='text-sm font-bold text-[#0f172a] truncate'>
-                                            Shanthi Social Services - Master health checkup
-                                        </span>
-                                        <span className='text-xs text-[#64748b]'>
-                                            4 pages · Jan 6, 2024
-                                        </span>
-                                    </div>
-                                    <ChevronRightOutlined className='text-xs text-[#94a3b8] shrink-0'/>
-                                </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -1280,20 +871,43 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
                                     Files
                                 </span>
                                 <div className='divide-y divide-[#f1f5f9]'>
-                                    {files.map((f) => (
-                                        <div key={f.id} className='py-2 flex items-center justify-between text-xs font-medium'>
-                                            <span className='text-[#0f172a] truncate max-w-[240px]'>
-                                                {f.name}
-                                            </span>
-                                            <button
-                                                type='button'
-                                                onClick={() => { handleDeleteFile(f.id) }}
-                                                className='text-[#94a3b8] hover:text-[#ef4444]'
+                                    {allFiles.map((f) => {
+                                        const isSelected = f.id === currentSelectedFile?.id
+                                        return (
+                                            <div
+                                                key={f.id}
+                                                onClick={() => {
+                                                    setSelectedFileId(f.id)
+                                                    if (f.date) setDocDate(f.date)
+                                                    if (f.provider) setProviderName(f.provider)
+                                                    if (f.notes !== undefined) setNotes(f.notes)
+                                                }}
+                                                className={`py-2 px-2.5 rounded-lg flex items-center justify-between text-xs font-medium cursor-pointer transition-colors ${
+                                                    isSelected
+                                                        ? 'bg-[#e8f5f1] text-[#007a55] font-semibold border-l-4 border-l-[#007a55]'
+                                                        : 'text-[#0f172a] hover:bg-[#f8faf9]'
+                                                }`}
                                             >
-                                                <DeleteOutlined/>
-                                            </button>
-                                        </div>
-                                    ))}
+                                                <div className='flex items-center gap-2 min-w-0'>
+                                                    <FileTextOutlined className={isSelected ? 'text-[#007a55]' : 'text-[#64748b]'}/>
+                                                    <span className='truncate max-w-[200px]'>
+                                                        {f.name}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type='button'
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        handleInitiateDelete(f)
+                                                    }}
+                                                    className='text-[#94a3b8] hover:text-[#ef4444] p-1'
+                                                    title='Delete file'
+                                                >
+                                                    <DeleteOutlined/>
+                                                </button>
+                                            </div>
+                                        )
+                                    })}
                                 </div>
                                 <button
                                     type='button'
@@ -1307,13 +921,19 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
 
                             {/* Document Preview Thumbnail & Visual viewer link */}
                             <div className='bg-white rounded-2xl border border-[#e5ece8] p-4 flex flex-col gap-2.5 shadow-2xs'>
+                                <div className='flex items-center justify-between text-xs font-bold text-[#0f172a]'>
+                                    <span className='truncate'>{currentSelectedFile?.name ?? 'Document Preview'}</span>
+                                    <span className='text-[10px] text-[#007a55] font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200'>
+                                        Page {activeFileIndex >= 0 ? activeFileIndex + 1 : 1} of {allFiles.length}
+                                    </span>
+                                </div>
                                 <div
                                     onClick={() => { setMobileScreen('parameter_preview') }}
                                     className='relative rounded-xl border border-[#cbd5e1] overflow-hidden cursor-pointer shadow-2xs'
                                 >
                                     <img
-                                        src='/sample-lab-report.png'
-                                        alt='Lab scan'
+                                        src={currentSelectedFile?.previewImage ?? '/sample-lab-report.png'}
+                                        alt={currentSelectedFile?.name ?? 'Lab scan'}
                                         className='w-full h-auto object-cover max-h-56'
                                     />
                                 </div>
@@ -1444,51 +1064,57 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
 
                             {/* Extracted Biomarker Groups (Clicking any row opens Screenshot 4) */}
                             <div className='flex flex-col gap-6'>
-                                {labGroups.map((group) => (
-                                    <div key={group.id} className='flex flex-col gap-1.5'>
-                                        <div className='flex items-baseline justify-between px-1'>
-                                            <h3 className='text-xs font-bold text-[#0f172a] uppercase tracking-wider'>
-                                                {group.title}
-                                            </h3>
-                                            <span className='text-[11px] text-[#64748b]'>
-                                                {group.date}
-                                            </span>
-                                        </div>
-                                        <div className='bg-white rounded-2xl border border-[#e5ece8] divide-y divide-[#f1f5f9] overflow-hidden shadow-2xs'>
-                                            {group.items.map((item) => (
-                                                <div
-                                                    key={item.id}
-                                                    onClick={() => { handleOpenParamPreview(item) }}
-                                                    className='p-3.5 flex items-center justify-between cursor-pointer hover:bg-[#f8faf9] active:bg-[#f1f5f3] transition-colors'
-                                                >
-                                                    <div className='flex flex-col gap-0.5 min-w-0 pr-2'>
-                                                        <div className='flex items-center gap-1.5'>
-                                                            <span className='font-bold text-xs text-[#0f172a] truncate'>
-                                                                {item.name}
-                                                            </span>
-                                                            {item.isAuto && (
-                                                                <span className='px-1 py-0.2 rounded text-[9px] font-bold bg-[#eff6ff] text-[#2563eb]'>
-                                                                    Auto
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <div className='flex items-center gap-2 text-xs'>
-                                                            <span className='font-bold text-[#0f172a]'>
-                                                                {item.value} {item.unit}
-                                                            </span>
-                                                            {item.refRange && (
-                                                                <span className='font-mono text-[11px] text-[#64748b]'>
-                                                                    [{item.refRange}]
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    <ChevronRightOutlined className='text-xs text-[#94a3b8] shrink-0'/>
-                                                </div>
-                                            ))}
-                                        </div>
+                                {activeLabGroups.length === 0 ? (
+                                    <div className='rounded-2xl border border-dashed border-[#cbd5e1] bg-white p-6 text-center text-xs text-[#64748b]'>
+                                        No extracted biomarker records found for this document.
                                     </div>
-                                ))}
+                                ) : (
+                                    activeLabGroups.map((group) => (
+                                        <div key={group.id} className='flex flex-col gap-1.5'>
+                                            <div className='flex items-baseline justify-between px-1'>
+                                                <h3 className='text-xs font-bold text-[#0f172a] uppercase tracking-wider'>
+                                                    {group.title}
+                                                </h3>
+                                                <span className='text-[11px] text-[#64748b]'>
+                                                    {group.date}
+                                                </span>
+                                            </div>
+                                            <div className='bg-white rounded-2xl border border-[#e5ece8] divide-y divide-[#f1f5f9] overflow-hidden shadow-2xs'>
+                                                {group.items.map((item) => (
+                                                    <div
+                                                        key={item.id}
+                                                        onClick={() => { handleOpenParamPreview(item) }}
+                                                        className='p-3.5 flex items-center justify-between cursor-pointer hover:bg-[#f8faf9] active:bg-[#f1f5f3] transition-colors'
+                                                    >
+                                                        <div className='flex flex-col gap-0.5 min-w-0 pr-2'>
+                                                            <div className='flex items-center gap-1.5'>
+                                                                <span className='font-bold text-xs text-[#0f172a] truncate'>
+                                                                    {item.name}
+                                                                </span>
+                                                                {item.isAuto && (
+                                                                    <span className='px-1 py-0.2 rounded text-[9px] font-bold bg-[#eff6ff] text-[#2563eb]'>
+                                                                        Auto
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className='flex items-center gap-2 text-xs'>
+                                                                <span className='font-bold text-[#0f172a]'>
+                                                                    {item.value} {item.unit}
+                                                                </span>
+                                                                {item.refRange && (
+                                                                    <span className='font-mono text-[11px] text-[#64748b]'>
+                                                                        [{item.refRange}]
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <ChevronRightOutlined className='text-xs text-[#94a3b8] shrink-0'/>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     </div>
@@ -1809,7 +1435,7 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
                                     File Uploads
                                 </span>
                                 <span className='text-xs font-medium text-[#007a55]'>
-                                    {files.length} file{files.length === 1 ? '' : 's'} uploaded
+                                    {allFiles.length} file{allFiles.length === 1 ? '' : 's'} uploaded
                                 </span>
                             </div>
                         </button>
@@ -1860,376 +1486,464 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
                     {/* MAIN CONTENT AREA */}
                     <div className='col-span-9 flex flex-col gap-6'>
                         {selectedCategory === 'uploads' ? (
-                            <div className='bg-white rounded-2xl border border-[#e5ece8] p-6 sm:p-8 shadow-2xs flex flex-col gap-7'>
-                                {/* Header: Back arrow + Edit Document + Action icon */}
-                                <div className='flex items-center justify-between border-b border-[#f1f5f9] pb-4'>
-                                    <div className='flex items-center gap-3'>
-                                        <button
-                                            type='button'
-                                            onClick={() => { void message.info('Back to documents') }}
-                                            className='text-[#64748b] hover:text-[#192823] transition-colors p-1 -ml-1'
-                                            title='Back'
-                                        >
-                                            <ArrowLeftOutlined className='text-base'/>
-                                        </button>
-                                        <h1 className='text-xl font-bold text-[#0f172a] tracking-tight'>
-                                            Edit Document
-                                        </h1>
+                            allFiles.length === 0 ? (
+                                <div className='bg-white rounded-2xl border border-[#e5ece8] p-10 sm:p-14 shadow-2xs flex flex-col items-center justify-center text-center gap-6'>
+                                    <div className='w-16 h-16 rounded-full bg-[#f0fdf4] text-[#007a55] flex items-center justify-center text-3xl shadow-2xs border border-[#a7f3d0]'>
+                                        <FileTextOutlined/>
                                     </div>
-                                    <div className='flex items-center gap-2'>
-                                        <button
-                                            type='button'
-                                            onClick={() => { void message.info('Share Document link copied') }}
-                                            className='text-[#64748b] hover:text-[#007a55] p-2 rounded-full hover:bg-[#f1f5f9] transition-colors'
-                                            title='Share document'
-                                        >
-                                            <ShareAltOutlined className='text-base'/>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Table: Attached Files List */}
-                                <div className='flex flex-col gap-2'>
-                                    <div className='grid grid-cols-12 px-3 py-1.5 text-xs font-semibold text-[#64748b] border-b border-[#f1f5f9]'>
-                                        <div className='col-span-6'>Name</div>
-                                        <div className='col-span-3 text-center'>Upload Date</div>
-                                        <div className='col-span-2 text-right'>Size</div>
-                                        <div className='col-span-1 text-right'/>
-                                    </div>
-
-                                    <div className='divide-y divide-[#f8fafc]'>
-                                        {files.map((file) => (
-                                            <div
-                                                key={file.id}
-                                                className='grid grid-cols-12 px-3 py-2.5 items-center text-xs font-medium text-[#192823] hover:bg-[#f8faf9] rounded-lg transition-colors group'
-                                            >
-                                                <div className='col-span-6 truncate font-medium text-[#0f172a] flex items-center gap-2'>
-                                                    <FileTextOutlined className='text-[#007a55]'/>
-                                                    <span className='truncate'>{file.name}</span>
-                                                </div>
-                                                <div className='col-span-3 text-center text-[#64748b]'>
-                                                    {file.uploadDate}
-                                                </div>
-                                                <div className='col-span-2 text-right text-[#64748b]'>
-                                                    {file.size}
-                                                </div>
-                                                <div className='col-span-1 text-right'>
-                                                    <button
-                                                        type='button'
-                                                        onClick={() => { handleDeleteFile(file.id) }}
-                                                        className='text-[#94a3b8] hover:text-[#ef4444] p-1 rounded transition-colors'
-                                                        title='Delete file'
-                                                    >
-                                                        <DeleteOutlined/>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    <div className='pt-1'>
-                                        <button
-                                            type='button'
-                                            onClick={handleAddImages}
-                                            className='text-xs font-semibold text-[#007a55] hover:underline flex items-center gap-1.5'
-                                        >
-                                            <PlusOutlined className='text-[10px]'/>
-                                            <span>Add more images</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Document Form with Scanned Report Preview */}
-                                <div className='grid grid-cols-12 gap-6 items-start pt-2 border-t border-[#f1f5f9]'>
-                                    {/* Left: Scanned Document Thumbnail */}
-                                    <div className='col-span-5 flex flex-col gap-2'>
-                                        <div
-                                            onClick={() => { setIsPreviewModalOpen(true) }}
-                                            className='relative rounded-xl border border-[#e2e8f0] overflow-hidden group cursor-pointer bg-[#f8fafc] shadow-2xs hover:shadow-md transition-all'
-                                            title='Click to expand File Preview'
-                                        >
-                                            <img
-                                                src='/sample-lab-report.png'
-                                                alt='Document Scan Preview'
-                                                className='w-full h-auto object-cover max-h-[360px] group-hover:scale-[1.02] transition-transform duration-200'
-                                                onError={(e) => {
-                                                    (e.currentTarget as HTMLElement).style.display = 'none'
-                                                }}
-                                            />
-                                            <div className='absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-2'>
-                                                <span>🔍 Click to preview & verify</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Right: Document Details Form */}
-                                    <div className='col-span-7 flex flex-col gap-4'>
-                                        {/* Document Date */}
-                                        <div className='flex flex-col gap-1.5'>
-                                            <label className='text-xs font-semibold text-[#475569]'>
-                                                Document Date
-                                            </label>
-                                            <div className='relative'>
-                                                <input
-                                                    type='text'
-                                                    value={docDate}
-                                                    onChange={(e) => { setDocDate(e.target.value) }}
-                                                    className='w-full px-3.5 py-2 rounded-xl bg-white border border-[#cbd5e1] text-xs font-medium text-[#0f172a] focus:outline-none focus:border-[#007a55]'
-                                                />
-                                                <CalendarOutlined className='absolute right-3.5 top-2.5 text-xs text-[#94a3b8]'/>
-                                            </div>
-                                        </div>
-
-                                        {/* Document Provider */}
-                                        <div className='flex flex-col gap-1.5'>
-                                            <label className='text-xs font-semibold text-[#475569]'>
-                                                Document Provider
-                                            </label>
-                                            <input
-                                                type='text'
-                                                value={providerName}
-                                                onChange={(e) => { setProviderName(e.target.value) }}
-                                                className='w-full px-3.5 py-2 rounded-xl bg-white border border-[#cbd5e1] text-xs font-medium text-[#0f172a] focus:outline-none focus:border-[#007a55]'
-                                            />
-                                        </div>
-
-                                        {/* Notes (optional) */}
-                                        <div className='flex flex-col gap-1.5'>
-                                            <div className='flex items-center justify-between'>
-                                                <label className='text-xs font-semibold text-[#475569]'>
-                                                    Notes
-                                                </label>
-                                                <span className='text-[11px] text-[#94a3b8] italic'>
-                                                    optional
-                                                </span>
-                                            </div>
-                                            <textarea
-                                                rows={2}
-                                                value={notes}
-                                                onChange={(e) => { setNotes(e.target.value) }}
-                                                placeholder='optional'
-                                                className='w-full px-3.5 py-2 rounded-xl bg-white border border-[#cbd5e1] text-xs text-[#0f172a] focus:outline-none focus:border-[#007a55] resize-none'
-                                            />
-                                        </div>
-
-                                        {/* Document Category (0) */}
-                                        <div className='flex flex-col gap-2 pt-1'>
-                                            <label className='text-xs font-semibold text-[#475569]'>
-                                                Document Category (0)
-                                            </label>
-                                            <div className='flex items-center gap-5'>
-                                                <label className='flex items-center gap-2 text-xs text-[#334155] cursor-pointer'>
-                                                    <input
-                                                        type='checkbox'
-                                                        checked={categoryDiagnostic}
-                                                        onChange={(e) => { setCategoryDiagnostic(e.target.checked) }}
-                                                        className='accent-[#007a55] rounded'
-                                                    />
-                                                    <span>Diagnostic</span>
-                                                </label>
-                                                <label className='flex items-center gap-2 text-xs text-[#334155] cursor-pointer'>
-                                                    <input
-                                                        type='checkbox'
-                                                        checked={categoryRecords}
-                                                        onChange={(e) => { setCategoryRecords(e.target.checked) }}
-                                                        className='accent-[#007a55] rounded'
-                                                    />
-                                                    <span>Records</span>
-                                                </label>
-                                            </div>
-                                        </div>
-
-                                        {/* Action buttons: Cancel / Save */}
-                                        <div className='flex items-center justify-end gap-4 pt-3'>
-                                            <button
-                                                type='button'
-                                                onClick={handleCancelDoc}
-                                                className='text-xs font-bold text-[#ef4444] hover:underline'
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                type='button'
-                                                onClick={handleSaveDoc}
-                                                className='px-6 py-2 rounded-lg bg-[#007a55] hover:bg-[#006244] text-white text-xs font-bold shadow-xs transition-colors'
-                                            >
-                                                Save
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Purple AI Extraction Banner & Status Box */}
-                                <div className='flex flex-col gap-3 pt-2'>
-                                    {/* Purple Notice Callout */}
-                                    <div className='border border-purple-200 bg-[#faf5ff] text-[#6b21a8] text-xs px-4 py-2.5 rounded-xl font-medium'>
-                                        Want to extract values from this document to track on biomarkers or other records? Run the AI tool to auto-organize your report.
-                                    </div>
-
-                                    {/* Purple AI Extraction Progress Card */}
-                                    <div className='bg-[#ede9fe]/50 border border-[#ddd6fe] rounded-2xl p-4 sm:p-5 flex flex-col gap-4'>
-                                        <div className='flex items-center justify-between'>
-                                            <div className='flex items-center gap-3'>
-                                                <div className='w-9 h-9 rounded-full bg-[#7c3aed] text-white flex items-center justify-center text-sm shadow-xs shrink-0'>
-                                                    ✨
-                                                </div>
-                                                <div className='flex flex-col'>
-                                                    <span className='text-sm font-bold text-[#4c1d95]'>
-                                                        Extracted Records ({totalExtractedCount})
-                                                    </span>
-                                                    <span className='text-xs text-[#7c3aed]'>
-                                                        4 pages scanned
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* 3 Progress Bars: Vitals, Conditions, Screening */}
-                                        <div className='flex flex-col gap-2.5'>
-                                            <div className='flex items-center justify-between gap-4'>
-                                                <span className='text-xs font-medium text-[#5b21b6] w-24 shrink-0'>
-                                                    Vitals
-                                                </span>
-                                                <div className='flex-1 h-2 rounded-full bg-[#ddd6fe] overflow-hidden'>
-                                                    <div className='h-full bg-[#7c3aed] rounded-full w-full'/>
-                                                </div>
-                                                <CheckCircleFilled className='text-[#7c3aed] text-sm shrink-0'/>
-                                            </div>
-
-                                            <div className='flex items-center justify-between gap-4'>
-                                                <span className='text-xs font-medium text-[#5b21b6] w-24 shrink-0'>
-                                                    Conditions
-                                                </span>
-                                                <div className='flex-1 h-2 rounded-full bg-[#ddd6fe] overflow-hidden'>
-                                                    <div className='h-full bg-[#7c3aed] rounded-full w-full'/>
-                                                </div>
-                                                <CheckCircleFilled className='text-[#7c3aed] text-sm shrink-0'/>
-                                            </div>
-
-                                            <div className='flex items-center justify-between gap-4'>
-                                                <span className='text-xs font-medium text-[#5b21b6] w-24 shrink-0'>
-                                                    Screening
-                                                </span>
-                                                <div className='flex-1 h-2 rounded-full bg-[#ddd6fe] overflow-hidden'>
-                                                    <div className='h-full bg-[#7c3aed] rounded-full w-full'/>
-                                                </div>
-                                                <CheckCircleFilled className='text-[#7c3aed] text-sm shrink-0'/>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Notice text & Add to group link */}
-                                    <div className='flex flex-col gap-1 pt-1'>
-                                        <p className='text-xs text-[#64748b] italic'>
-                                            * All records have been verified or created. Need to make a change? Edit them below. If there are duplicates, you may delete them.
+                                    <div className='flex flex-col gap-1 max-w-md'>
+                                        <h2 className='text-xl font-bold text-[#0f172a]'>No Documents Uploaded Yet</h2>
+                                        <p className='text-xs text-[#64748b] leading-relaxed'>
+                                            Upload your medical reports, lab results, PDFs, or scanned test images to automatically track, organize, and extract biomarkers.
                                         </p>
-                                        <div>
+                                    </div>
+                                    <div className='flex flex-wrap items-center justify-center gap-2 text-[11px] text-[#475569] font-medium'>
+                                        <span className='px-2.5 py-1 rounded-full bg-[#f1f5f9] border border-[#e2e8f0]'>PDF Documents</span>
+                                        <span className='px-2.5 py-1 rounded-full bg-[#f1f5f9] border border-[#e2e8f0]'>Lab Images (JPG, PNG)</span>
+                                        <span className='px-2.5 py-1 rounded-full bg-[#f1f5f9] border border-[#e2e8f0]'>DICOM Imaging</span>
+                                    </div>
+                                    <button
+                                        type='button'
+                                        onClick={handleAddImages}
+                                        className='px-6 py-2.5 rounded-xl bg-[#007a55] hover:bg-[#006244] text-white text-xs font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer'
+                                    >
+                                        <PlusOutlined/>
+                                        <span>Select or Upload Document</span>
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className='bg-white rounded-2xl border border-[#e5ece8] p-6 sm:p-8 shadow-2xs flex flex-col gap-7'>
+                                    {/* Header: Back arrow + Edit Document + Action icon */}
+                                    <div className='flex items-center justify-between border-b border-[#f1f5f9] pb-4'>
+                                        <div className='flex items-center gap-3'>
                                             <button
                                                 type='button'
-                                                onClick={() => { setIsAddRecordModalOpen(true) }}
-                                                className='text-xs font-semibold text-[#007a55] hover:underline inline-flex items-center gap-1'
+                                                onClick={() => { void message.info('Back to documents') }}
+                                                className='text-[#64748b] hover:text-[#192823] transition-colors p-1 -ml-1'
+                                                title='Back'
+                                            >
+                                                <ArrowLeftOutlined className='text-base'/>
+                                            </button>
+                                            <h1 className='text-xl font-bold text-[#0f172a] tracking-tight'>
+                                                Edit Document
+                                            </h1>
+                                        </div>
+                                        <div className='flex items-center gap-2'>
+                                            <button
+                                                type='button'
+                                                onClick={() => { void message.info('Share Document link copied') }}
+                                                className='text-[#64748b] hover:text-[#007a55] p-2 rounded-full hover:bg-[#f1f5f9] transition-colors'
+                                                title='Share document'
+                                            >
+                                                <ShareAltOutlined className='text-base'/>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Table: Attached Files List */}
+                                    <div className='flex flex-col gap-2'>
+                                        <div className='grid grid-cols-12 px-3 py-1.5 text-xs font-semibold text-[#64748b] border-b border-[#f1f5f9]'>
+                                            <div className='col-span-6'>Name</div>
+                                            <div className='col-span-3 text-center'>Upload Date</div>
+                                            <div className='col-span-2 text-right'>Size</div>
+                                            <div className='col-span-1 text-right'/>
+                                        </div>
+
+                                        <div className='divide-y divide-[#f8fafc]'>
+                                            {allFiles.map((file) => {
+                                                const isSelected = file.id === currentSelectedFile?.id
+                                                return (
+                                                    <div
+                                                        key={file.id}
+                                                        onClick={() => {
+                                                            setSelectedFileId(file.id)
+                                                            if (file.date) setDocDate(file.date)
+                                                            if (file.provider) setProviderName(file.provider)
+                                                            if (file.notes !== undefined) setNotes(file.notes)
+                                                        }}
+                                                        className={`grid grid-cols-12 px-3 py-2.5 items-center text-xs font-medium cursor-pointer rounded-lg transition-all ${
+                                                            isSelected
+                                                                ? 'bg-[#e8f5f1] text-[#007a55] font-semibold ring-1 ring-[#a7f3d0] border-l-4 border-l-[#007a55] shadow-2xs'
+                                                                : 'text-[#192823] hover:bg-[#f8faf9]'
+                                                        }`}
+                                                    >
+                                                        <div className='col-span-6 truncate flex items-center gap-2'>
+                                                            <FileTextOutlined className={isSelected ? 'text-[#007a55]' : 'text-[#64748b]'}/>
+                                                            <span className={`truncate ${isSelected ? 'font-bold text-[#007a55]' : 'text-[#0f172a]'}`}>
+                                                                {file.name}
+                                                            </span>
+                                                            {isSelected && (
+                                                                <span className='px-1.5 py-0.2 rounded-full bg-[#007a55] text-white text-[9px] font-bold shrink-0'>
+                                                                    Selected
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className='col-span-3 text-center text-[#64748b]'>
+                                                            {file.uploadDate}
+                                                        </div>
+                                                        <div className='col-span-2 text-right text-[#64748b]'>
+                                                            {file.size}
+                                                        </div>
+                                                        <div className='col-span-1 text-right'>
+                                                            <button
+                                                                type='button'
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    handleInitiateDelete(file)
+                                                                }}
+                                                                className='text-[#94a3b8] hover:text-[#ef4444] p-1 rounded transition-colors cursor-pointer'
+                                                                title='Delete file'
+                                                            >
+                                                                <DeleteOutlined/>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+
+                                        <div className='pt-1'>
+                                            <button
+                                                type='button'
+                                                onClick={handleAddImages}
+                                                className='text-xs font-semibold text-[#007a55] hover:underline flex items-center gap-1.5'
                                             >
                                                 <PlusOutlined className='text-[10px]'/>
-                                                <span>Add to a record group</span>
+                                                <span>Add more images</span>
                                             </button>
                                         </div>
                                     </div>
-                                </div>
 
-                                {/* Extracted Biomarkers Grouped by Lab Section */}
-                                <div className='flex flex-col gap-6 pt-2'>
-                                    {labGroups.map((group) => (
-                                        <div key={group.id} className='flex flex-col gap-1.5'>
-                                            {/* Section Header */}
-                                            <div className='flex items-baseline justify-between px-1'>
-                                                <h3 className='text-xs font-bold text-[#0f172a] uppercase tracking-wider'>
-                                                    {group.title}
-                                                </h3>
-                                                <span className='text-[11px] text-[#64748b]'>
-                                                    {group.date}
+                                    {/* Document Form with Scanned Report Preview */}
+                                    <div className='grid grid-cols-12 gap-6 items-start pt-2 border-t border-[#f1f5f9]'>
+                                        {/* Left: Scanned Document Thumbnail */}
+                                        <div className='col-span-5 flex flex-col gap-2'>
+                                            <div className='flex items-center justify-between text-xs font-bold text-[#0f172a] mb-0.5'>
+                                                <span className='truncate'>{currentSelectedFile?.name ?? 'Document Preview'}</span>
+                                                <span className='text-[11px] font-semibold text-[#007a55] px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 shrink-0'>
+                                                    Page {activeFileIndex >= 0 ? activeFileIndex + 1 : 1} of {allFiles.length}
                                                 </span>
                                             </div>
-
-                                            {/* Group Rows Container */}
-                                            <div className='bg-white rounded-xl border border-[#e2e8f0] divide-y divide-[#f1f5f9] overflow-hidden'>
-                                                {group.items.map((item) => {
-                                                    const menuItems = [
-                                                        {
-                                                            key: 'edit',
-                                                            label: 'Edit Value & Range',
-                                                            onClick: () => {
-                                                                setDesktopActiveParamId(item.id)
-                                                                handleStartDesktopEdit(item)
-                                                                setIsPreviewModalOpen(true)
-                                                            },
-                                                        },
-                                                        {
-                                                            key: 'preview',
-                                                            label: 'Highlight in Lab PDF',
-                                                            onClick: () => {
-                                                                setDesktopActiveParamId(item.id)
-                                                                setIsPreviewModalOpen(true)
-                                                            },
-                                                        },
-                                                        {
-                                                            key: 'delete',
-                                                            danger: true,
-                                                            label: 'Delete Record',
-                                                            onClick: () => { handleDeleteItem(item.id) },
-                                                        },
-                                                    ]
-
-                                                    return (
-                                                        <div
-                                                            key={item.id}
-                                                            className='px-4 py-2.5 flex items-center justify-between text-xs hover:bg-[#f8faf9] transition-colors group'
-                                                        >
-                                                            {/* Left: Biomarker Name + Auto tag */}
-                                                            <div className='flex items-center gap-2 min-w-0 pr-4'>
-                                                                <span className='font-medium text-[#0f172a] truncate'>
-                                                                    {item.name}
-                                                                </span>
-                                                                {item.isAuto && (
-                                                                    <span className='px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#eff6ff] text-[#2563eb] border border-[#bfdbfe] shrink-0'>
-                                                                        Auto
-                                                                    </span>
-                                                                )}
-                                                            </div>
-
-                                                            {/* Right: Value, Ref Range, ⋮ Action */}
-                                                            <div className='flex items-center gap-6 shrink-0'>
-                                                                <div className='text-right'>
-                                                                    <span className='font-bold text-[#0f172a]'>
-                                                                        {item.value}
-                                                                    </span>
-                                                                    {item.unit && (
-                                                                        <span className='text-[#64748b] ml-1 text-[11px] font-medium'>
-                                                                            {item.unit}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-
-                                                                <div className='w-24 text-right font-mono text-[11px] text-[#64748b] hidden sm:block'>
-                                                                    {item.refRange ? `[ ${item.refRange} ]` : ''}
-                                                                </div>
-
-                                                                <Dropdown menu={{ items: menuItems }} trigger={['click']}>
-                                                                    <button
-                                                                        type='button'
-                                                                        className='text-[#94a3b8] hover:text-[#0f172a] p-1 rounded-full hover:bg-[#f1f5f9] transition-colors'
-                                                                    >
-                                                                        <MoreOutlined className='text-sm'/>
-                                                                    </button>
-                                                                </Dropdown>
-                                                            </div>
+                                            <div
+                                                onClick={() => { setIsPreviewModalOpen(true) }}
+                                                className='relative rounded-xl border border-[#e2e8f0] overflow-hidden group cursor-pointer bg-[#f8fafc] shadow-2xs hover:shadow-md transition-all'
+                                                title='Click to expand File Preview'
+                                            >
+                                                {currentSelectedFile?.previewImage ? (
+                                                    <img
+                                                        src={currentSelectedFile.previewImage}
+                                                        alt={currentSelectedFile.name ?? 'Document Scan Preview'}
+                                                        className='w-full h-auto object-cover max-h-[360px] group-hover:scale-[1.02] transition-transform duration-200'
+                                                        onError={(e) => {
+                                                            (e.currentTarget as HTMLElement).style.display = 'none'
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <div className='w-full h-56 flex flex-col items-center justify-center bg-[#f8fafc] text-[#64748b] gap-3 p-6 text-center'>
+                                                        <FileTextOutlined className='text-4xl text-[#94a3b8]'/>
+                                                        <div className='flex flex-col gap-0.5'>
+                                                            <span className='text-xs font-semibold text-[#334155]'>{currentSelectedFile?.name}</span>
+                                                            <span className='text-[11px] text-[#94a3b8]'>{currentSelectedFile?.size}</span>
                                                         </div>
-                                                    )
-                                                })}
+                                                    </div>
+                                                )}
+                                                <div className='absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-2'>
+                                                    <span>🔍 Click to preview & verify ({currentSelectedFile?.name})</span>
+                                                </div>
                                             </div>
                                         </div>
-                                    ))}
+
+                                        {/* Right: Document Details Form */}
+                                        <div className='col-span-7 flex flex-col gap-4'>
+                                            {/* Document Date */}
+                                            <div className='flex flex-col gap-1.5'>
+                                                <label className='text-xs font-semibold text-[#475569]'>
+                                                    Document Date
+                                                </label>
+                                                <div className='relative'>
+                                                    <input
+                                                        type='text'
+                                                        value={docDate || (currentSelectedFile?.date ?? '')}
+                                                        onChange={(e) => { setDocDate(e.target.value) }}
+                                                        placeholder='MM / DD / YYYY'
+                                                        className='w-full px-3.5 py-2 rounded-xl bg-white border border-[#cbd5e1] text-xs font-medium text-[#0f172a] focus:outline-none focus:border-[#007a55]'
+                                                    />
+                                                    <CalendarOutlined className='absolute right-3.5 top-2.5 text-xs text-[#94a3b8]'/>
+                                                </div>
+                                            </div>
+
+                                            {/* Document Provider */}
+                                            <div className='flex flex-col gap-1.5'>
+                                                <label className='text-xs font-semibold text-[#475569]'>
+                                                    Document Provider
+                                                </label>
+                                                <input
+                                                    type='text'
+                                                    value={providerName || (currentSelectedFile?.provider ?? '')}
+                                                    onChange={(e) => { setProviderName(e.target.value) }}
+                                                    placeholder='e.g. Clinical Laboratory, Quest Diagnostics'
+                                                    className='w-full px-3.5 py-2 rounded-xl bg-white border border-[#cbd5e1] text-xs font-medium text-[#0f172a] focus:outline-none focus:border-[#007a55]'
+                                                />
+                                            </div>
+
+                                            {/* Notes (optional) */}
+                                            <div className='flex flex-col gap-1.5'>
+                                                <div className='flex items-center justify-between'>
+                                                    <label className='text-xs font-semibold text-[#475569]'>
+                                                        Notes
+                                                    </label>
+                                                    <span className='text-[11px] text-[#94a3b8] italic'>
+                                                        optional
+                                                    </span>
+                                                </div>
+                                                <textarea
+                                                    rows={2}
+                                                    value={notes || (currentSelectedFile?.notes ?? '')}
+                                                    onChange={(e) => { setNotes(e.target.value) }}
+                                                    placeholder='optional'
+                                                    className='w-full px-3.5 py-2 rounded-xl bg-white border border-[#cbd5e1] text-xs text-[#0f172a] focus:outline-none focus:border-[#007a55] resize-none'
+                                                />
+                                            </div>
+
+                                            {/* Document Category (0) */}
+                                            <div className='flex flex-col gap-2 pt-1'>
+                                                <label className='text-xs font-semibold text-[#475569]'>
+                                                    Document Category (0)
+                                                </label>
+                                                <div className='flex items-center gap-5'>
+                                                    <label className='flex items-center gap-2 text-xs text-[#334155] cursor-pointer'>
+                                                        <input
+                                                            type='checkbox'
+                                                            checked={categoryDiagnostic}
+                                                            onChange={(e) => { setCategoryDiagnostic(e.target.checked) }}
+                                                            className='accent-[#007a55] rounded'
+                                                        />
+                                                        <span>Diagnostic</span>
+                                                    </label>
+                                                    <label className='flex items-center gap-2 text-xs text-[#334155] cursor-pointer'>
+                                                        <input
+                                                            type='checkbox'
+                                                            checked={categoryRecords}
+                                                            onChange={(e) => { setCategoryRecords(e.target.checked) }}
+                                                            className='accent-[#007a55] rounded'
+                                                        />
+                                                        <span>Records</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            {/* Action buttons: Cancel / Save */}
+                                            <div className='flex items-center justify-end gap-4 pt-3'>
+                                                <button
+                                                    type='button'
+                                                    onClick={handleCancelDoc}
+                                                    className='text-xs font-bold text-[#ef4444] hover:underline'
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    type='button'
+                                                    onClick={handleSaveDoc}
+                                                    className='px-6 py-2 rounded-lg bg-[#007a55] hover:bg-[#006244] text-white text-xs font-bold shadow-xs transition-colors'
+                                                >
+                                                    Save
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Purple AI Extraction Banner & Status Box */}
+                                    <div className='flex flex-col gap-3 pt-2'>
+                                        {/* Purple Notice Callout */}
+                                        <div className='border border-purple-200 bg-[#faf5ff] text-[#6b21a8] text-xs px-4 py-2.5 rounded-xl font-medium'>
+                                            Want to extract values from this document to track on biomarkers or other records? Run the AI tool to auto-organize your report.
+                                        </div>
+
+                                        {/* Purple AI Extraction Progress Card */}
+                                        <div className='bg-[#ede9fe]/50 border border-[#ddd6fe] rounded-2xl p-4 sm:p-5 flex flex-col gap-4'>
+                                            <div className='flex items-center justify-between'>
+                                                <div className='flex items-center gap-3'>
+                                                    <div className='w-9 h-9 rounded-full bg-[#7c3aed] text-white flex items-center justify-center text-sm shadow-xs shrink-0'>
+                                                        ✨
+                                                    </div>
+                                                    <div className='flex flex-col'>
+                                                        <span className='text-sm font-bold text-[#4c1d95]'>
+                                                            Extracted Records ({activeExtractedCount})
+                                                        </span>
+                                                        <span className='text-xs text-[#7c3aed]'>
+                                                            {currentSelectedFile?.name ?? 'Document'} • {activeExtractedCount} readings
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {activeExtractedCount > 0 ? (
+                                            /* 3 Progress Bars: Vitals, Conditions, Screening */
+                                                <div className='flex flex-col gap-2.5'>
+                                                    <div className='flex items-center justify-between gap-4'>
+                                                        <span className='text-xs font-medium text-[#5b21b6] w-24 shrink-0'>
+                                                            Vitals
+                                                        </span>
+                                                        <div className='flex-1 h-2 rounded-full bg-[#ddd6fe] overflow-hidden'>
+                                                            <div className='h-full bg-[#7c3aed] rounded-full w-full'/>
+                                                        </div>
+                                                        <CheckCircleFilled className='text-[#7c3aed] text-sm shrink-0'/>
+                                                    </div>
+
+                                                    <div className='flex items-center justify-between gap-4'>
+                                                        <span className='text-xs font-medium text-[#5b21b6] w-24 shrink-0'>
+                                                            Conditions
+                                                        </span>
+                                                        <div className='flex-1 h-2 rounded-full bg-[#ddd6fe] overflow-hidden'>
+                                                            <div className='h-full bg-[#7c3aed] rounded-full w-full'/>
+                                                        </div>
+                                                        <CheckCircleFilled className='text-[#7c3aed] text-sm shrink-0'/>
+                                                    </div>
+
+                                                    <div className='flex items-center justify-between gap-4'>
+                                                        <span className='text-xs font-medium text-[#5b21b6] w-24 shrink-0'>
+                                                            Screening
+                                                        </span>
+                                                        <div className='flex-1 h-2 rounded-full bg-[#ddd6fe] overflow-hidden'>
+                                                            <div className='h-full bg-[#7c3aed] rounded-full w-full'/>
+                                                        </div>
+                                                        <CheckCircleFilled className='text-[#7c3aed] text-sm shrink-0'/>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className='py-2 px-3 rounded-xl bg-purple-50/80 border border-purple-100 text-xs text-[#6b21a8] italic'>
+                                                    No biomarker records extracted yet for this document. Run the AI tool to auto-organize your report.
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Notice text & Add to group link */}
+                                        <div className='flex flex-col gap-1 pt-1'>
+                                            {activeExtractedCount > 0 && (
+                                                <p className='text-xs text-[#64748b] italic'>
+                                                    * All records have been verified or created. Need to make a change? Edit them below. If there are duplicates, you may delete them.
+                                                </p>
+                                            )}
+                                            <div>
+                                                <button
+                                                    type='button'
+                                                    onClick={() => { setIsAddRecordModalOpen(true) }}
+                                                    className='text-xs font-semibold text-[#007a55] hover:underline inline-flex items-center gap-1'
+                                                >
+                                                    <PlusOutlined className='text-[10px]'/>
+                                                    <span>Add to a record group</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Extracted Biomarkers Grouped by Lab Section */}
+                                    <div className='flex flex-col gap-6 pt-2'>
+                                        {activeLabGroups.length === 0 ? (
+                                            <div className='rounded-xl border border-dashed border-[#cbd5e1] bg-[#f8fafc] p-8 flex flex-col items-center justify-center text-center gap-2'>
+                                                <div className='w-10 h-10 rounded-full bg-[#e2e8f0] flex items-center justify-center text-[#64748b] text-base'>
+                                                    <FileTextOutlined/>
+                                                </div>
+                                                <span className='text-sm font-bold text-[#334155]'>No Records For This Document</span>
+                                                <p className='text-xs text-[#64748b] max-w-xs m-0'>
+                                                    No extracted biomarker records found for {currentSelectedFile?.name}.
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            activeLabGroups.map((group) => (
+                                                <div key={group.id} className='flex flex-col gap-1.5'>
+                                                    {/* Section Header */}
+                                                    <div className='flex items-baseline justify-between px-1'>
+                                                        <h3 className='text-xs font-bold text-[#0f172a] uppercase tracking-wider'>
+                                                            {group.title}
+                                                        </h3>
+                                                        <span className='text-[11px] text-[#64748b]'>
+                                                            {group.date}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Group Rows Container */}
+                                                    <div className='bg-white rounded-xl border border-[#e2e8f0] divide-y divide-[#f1f5f9] overflow-hidden'>
+                                                        {group.items.map((item) => {
+                                                            const menuItems = [
+                                                                {
+                                                                    key: 'edit',
+                                                                    label: 'Edit Value & Range',
+                                                                    onClick: () => {
+                                                                        setDesktopActiveParamId(item.id)
+                                                                        handleStartDesktopEdit(item)
+                                                                        setIsPreviewModalOpen(true)
+                                                                    },
+                                                                },
+                                                                {
+                                                                    key: 'preview',
+                                                                    label: 'Highlight in Lab PDF',
+                                                                    onClick: () => {
+                                                                        setDesktopActiveParamId(item.id)
+                                                                        setIsPreviewModalOpen(true)
+                                                                    },
+                                                                },
+                                                                {
+                                                                    key: 'delete',
+                                                                    danger: true,
+                                                                    label: 'Delete Record',
+                                                                    onClick: () => { handleDeleteItem(item.id) },
+                                                                },
+                                                            ]
+
+                                                            return (
+                                                                <div
+                                                                    key={item.id}
+                                                                    className='px-4 py-2.5 flex items-center justify-between text-xs hover:bg-[#f8faf9] transition-colors group'
+                                                                >
+                                                                    {/* Left: Biomarker Name + Auto tag */}
+                                                                    <div className='flex items-center gap-2 min-w-0 pr-4'>
+                                                                        <span className='font-medium text-[#0f172a] truncate'>
+                                                                            {item.name}
+                                                                        </span>
+                                                                        {item.isAuto && (
+                                                                            <span className='px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#eff6ff] text-[#2563eb] border border-[#bfdbfe] shrink-0'>
+                                                                                Auto
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {/* Right: Value, Ref Range, ⋮ Action */}
+                                                                    <div className='flex items-center gap-6 shrink-0'>
+                                                                        <div className='text-right'>
+                                                                            <span className='font-bold text-[#0f172a]'>
+                                                                                {item.value}
+                                                                            </span>
+                                                                            {item.unit && (
+                                                                                <span className='text-[#64748b] ml-1 text-[11px] font-medium'>
+                                                                                    {item.unit}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+
+                                                                        <div className='w-24 text-right font-mono text-[11px] text-[#64748b] hidden sm:block'>
+                                                                            {item.refRange ? `[ ${item.refRange} ]` : ''}
+                                                                        </div>
+
+                                                                        <Dropdown menu={{ items: menuItems }} trigger={['click']}>
+                                                                            <button
+                                                                                type='button'
+                                                                                className='text-[#94a3b8] hover:text-[#0f172a] p-1 rounded-full hover:bg-[#f1f5f9] transition-colors'
+                                                                            >
+                                                                                <MoreOutlined className='text-sm'/>
+                                                                            </button>
+                                                                        </Dropdown>
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
+                            )
                         ) : selectedCategory === 'devices' ? (
                             /* DEVICES & APPS VIEW */
                             <div className='bg-white rounded-2xl border border-[#e5ece8] p-6 sm:p-8 shadow-2xs flex flex-col gap-6'>
@@ -2364,8 +2078,12 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
                                 </div>
                                 <div className='p-6 rounded-xl bg-[#f8fafc] text-center flex flex-col items-center justify-center gap-2'>
                                     <FolderOpenOutlined className='text-3xl text-[#94a3b8]'/>
-                                    <span className='text-sm font-semibold text-[#334155]'>1 Document Record Verified</span>
-                                    <span className='text-xs text-[#64748b]'>Shanthi Social Services - Master Health Checkup II (Jan 6, 2024)</span>
+                                    <span className='text-sm font-semibold text-[#334155]'>
+                                        {allFiles.length} Document Record{allFiles.length === 1 ? '' : 's'} Verified
+                                    </span>
+                                    <span className='text-xs text-[#64748b]'>
+                                        {allFiles.length > 0 ? allFiles.map((f) => f.name).join(', ') : 'No historical documents stored in vault'}
+                                    </span>
                                 </div>
                             </div>
                         )}
@@ -2531,22 +2249,10 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
                                     <div
                                         className='absolute border-2 border-[#3b82f6] bg-[#3b82f6]/30 rounded-xs pointer-events-none transition-all duration-300 shadow-md'
                                         style={{
-                                            top: getParamBoundingBox(
-                                                allFlatParams.find((p) => p.id === desktopActiveParamId)?.name ?? 'Uric Acid',
-                                                allFlatParams.findIndex((p) => p.id === desktopActiveParamId),
-                                            ).top,
-                                            left: getParamBoundingBox(
-                                                allFlatParams.find((p) => p.id === desktopActiveParamId)?.name ?? 'Uric Acid',
-                                                allFlatParams.findIndex((p) => p.id === desktopActiveParamId),
-                                            ).left,
-                                            width: getParamBoundingBox(
-                                                allFlatParams.find((p) => p.id === desktopActiveParamId)?.name ?? 'Uric Acid',
-                                                allFlatParams.findIndex((p) => p.id === desktopActiveParamId),
-                                            ).width,
-                                            height: getParamBoundingBox(
-                                                allFlatParams.find((p) => p.id === desktopActiveParamId)?.name ?? 'Uric Acid',
-                                                allFlatParams.findIndex((p) => p.id === desktopActiveParamId),
-                                            ).height,
+                                            top: desktopSingleHighlightBox.top,
+                                            left: desktopSingleHighlightBox.left,
+                                            width: desktopSingleHighlightBox.width,
+                                            height: desktopSingleHighlightBox.height,
                                         }}
                                     />
                                 )}
@@ -2801,6 +2507,26 @@ export const GuavaSourcesPage = ({ className, onAddResult }: GuavaSourcesPagePro
                     </div>
                 </div>
             </Modal>
+
+            {/* Document Deletion Confirmation Popup */}
+            <DeleteDocumentModal
+                open={isDeleteModalOpen}
+                documentName={fileToDelete?.name}
+                recordCount={
+                    fileToDelete
+                        ? ((labGroups.filter((g) => g.fileId === fileToDelete.id).flatMap((g) => g.items).length) ||
+                            (dbRecords.filter((r) => r.documentId === (fileToDelete.documentId ?? fileToDelete.id)).length))
+                        : 0
+                }
+                isDeleting={isDeleting}
+                onClose={() => {
+                    if (!isDeleting) {
+                        setIsDeleteModalOpen(false)
+                        setFileToDelete(null)
+                    }
+                }}
+                onConfirm={handleConfirmDelete}
+            />
         </div>
     )
 }

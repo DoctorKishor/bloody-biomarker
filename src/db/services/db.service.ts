@@ -12,14 +12,42 @@ import { Unit } from '@/db/models/unit'
 import { User } from '@/db/models/user'
 import { VerifiedConversion } from '@/db/models/verifiedConversion'
 
+export const ACTIVE_USER_STORAGE_KEY = 'bloody_active_user_id'
+export const ACTIVE_USER_CHANGED_EVENT = 'bloody_active_user_changed'
+
 let currentUserId: string | null = null
+try {
+    currentUserId = window?.localStorage?.getItem(ACTIVE_USER_STORAGE_KEY) ?? null
+} catch {
+    // Ignore storage errors in test or restricted environments
+}
+
 let isImporting = false
 
 export const setCurrentUserId = (userId: string) => {
     currentUserId = userId
+    try {
+        window?.localStorage?.setItem(ACTIVE_USER_STORAGE_KEY, userId)
+    } catch {
+        // Ignore storage errors
+    }
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(ACTIVE_USER_CHANGED_EVENT, { detail: userId }))
+    }
+}
+
+export const switchActiveUserId = (userId: string) => {
+    setCurrentUserId(userId)
 }
 
 export const getCurrentUserIdSync = (): string | null => {
+    if (!currentUserId) {
+        try {
+            currentUserId = window?.localStorage?.getItem(ACTIVE_USER_STORAGE_KEY) ?? null
+        } catch {
+            // Ignore storage errors
+        }
+    }
     return currentUserId
 }
 

@@ -1,147 +1,120 @@
 import { Range } from '@/db/types'
+import {
+    evaluateBiomarkerRange,
+    BiomarkerHealthStatus,
+    BiomarkerRangeEvaluation,
+} from '@/utils/referenceRange/biomarkerRangeEngine'
 
 export interface GuavaRangeBarProps {
     value?: number
     normalRange?: Range
     targetRange?: Range
+    biomarkerName?: string
+    unitLabel?: string
+    reportRangeRaw?: string | Range
+    userGender?: 'male' | 'female'
+    userAge?: number
     className?: string
 }
 
-export type RangeStatus = 'Optimal' | 'In range' | 'High' | 'Low' | 'Out of range' | 'Unknown'
+export type RangeStatus = BiomarkerHealthStatus
 
+/**
+ * Backward-compatible helper that delegates to the unified evaluation engine.
+ */
 export const calculateRangeStatus = (
     value?: number,
     normalRange?: Range,
-): { status: RangeStatus, color: string } => {
-    if (value === undefined || !normalRange) {
+    biomarkerName = '',
+    unitLabel = '',
+    userGender?: 'male' | 'female',
+    userAge?: number,
+): { status: string, color: string } => {
+    if (value === undefined) {
         return {
             status: 'Unknown',
             color: '#94a3b8',
         }
     }
 
-    const { min, max } = normalRange
-
-    if (min !== undefined && max !== undefined) {
-        if (value < min) {
-            return {
-                status: 'Out of range',
-                color: '#d97706',
-            }
-        }
-        if (value > max) {
-            return {
-                status: 'High',
-                color: '#ef4444',
-            }
-        }
-        const midPoint = (min + max) / 2
-        const distanceRatio = Math.abs(value - midPoint) / ((max - min) / 2)
-        if (distanceRatio < 0.45) {
-            return {
-                status: 'Optimal',
-                color: '#10b981',
-            }
-        }
-        return {
-            status: 'In range',
-            color: '#3b82f6',
-        }
-    }
-
-    if (max !== undefined) {
-        if (value > max) {
-            return {
-                status: 'High',
-                color: '#ef4444',
-            }
-        }
-        return {
-            status: 'Optimal',
-            color: '#10b981',
-        }
-    }
-
-    if (min !== undefined) {
-        if (value < min) {
-            return {
-                status: 'Out of range',
-                color: '#d97706',
-            }
-        }
-        return {
-            status: 'Optimal',
-            color: '#10b981',
-        }
-    }
+    const evaluation = evaluateBiomarkerRange({
+        biomarkerName,
+        value,
+        unit: unitLabel,
+        reportRangeRaw: normalRange,
+        userGender,
+        userAge,
+    })
 
     return {
-        status: 'Unknown',
-        color: '#94a3b8',
+        status: evaluation.statusLabel,
+        color: evaluation.statusColor,
     }
 }
 
 export const GuavaRangeBar = (props: GuavaRangeBarProps) => {
-    const { value, normalRange, className } = props
+    const {
+        value,
+        normalRange,
+        biomarkerName = '',
+        unitLabel = '',
+        reportRangeRaw,
+        userGender,
+        userAge,
+        className,
+    } = props
 
     if (value === undefined) {
         return null
     }
 
-    const { status, color } = calculateRangeStatus(value, normalRange)
+    const evaluation: BiomarkerRangeEvaluation = evaluateBiomarkerRange({
+        biomarkerName,
+        value,
+        unit: unitLabel,
+        reportRangeRaw: reportRangeRaw ?? normalRange,
+        userGender,
+        userAge,
+    })
 
-    const min = normalRange?.min ?? 0
-    const max = normalRange?.max ?? (value > 0 ? value * 1.5 : 100)
-
-    // Calculate percentage position along scale
-    const scaleSpan = max - min > 0 ? max - min : 1
-    const buffer = scaleSpan * 0.25
-    const totalMin = Math.max(0, min - buffer)
-    const totalMax = max + buffer
-    const totalSpan = totalMax - totalMin > 0 ? totalMax - totalMin : 1
-
-    const clampedPercent = Math.min(94, Math.max(6, ((value - totalMin) / totalSpan) * 100))
+    const { statusLabel, statusColor, markerPct, segments } = evaluation
 
     return (
         <div className={`flex flex-col items-start gap-0.5 w-24 sm:w-28 select-none ${className ?? ''}`}>
-            {status !== 'Unknown' && (
-                <span
-                    className='text-[10px] font-semibold tracking-tight leading-none'
-                    style={{ color }}
-                >
-                    {status}
-                </span>
-            )}
+            {/* Status Label (e.g. Optimal, Normal, Impaired, High, Low) */}
+            <span
+                className='text-[10px] font-semibold tracking-tight leading-none'
+                style={{ color: statusColor }}
+            >
+                {statusLabel}
+            </span>
 
+            {/* Range Bar with identical multi-colored segments as modal */}
             <div className='relative w-full h-2 rounded-full overflow-visible flex items-center'>
-                {/* Zone track */}
-                <div className='w-full h-1 rounded-full flex overflow-hidden'>
-                    {status === 'In range' ? (
-                        <>
-                            <div className='h-full bg-[#60a5fa]' style={{ width: '80%' }}/>
-                            <div className='h-full bg-[#e2e8f0]' style={{ width: '20%' }}/>
-                        </>
-                    ) : status === 'Out of range' ? (
-                        <>
-                            <div className='h-full bg-[#fed7aa]' style={{ width: '45%' }}/>
-                            <div className='h-full bg-[#60a5fa]' style={{ width: '55%' }}/>
-                        </>
-                    ) : (
-                        <>
-                            <div className='h-full bg-[#10b981]' style={{ width: '60%' }}/>
-                            <div className='h-full bg-[#ef4444]' style={{ width: '40%' }}/>
-                        </>
-                    )}
+                <div className='w-full h-1.5 rounded-full flex overflow-hidden shadow-2xs'>
+                    {segments.map((seg, idx) => (
+                        <div
+                            key={idx}
+                            className='h-full transition-all'
+                            style={{
+                                width: `${seg.widthPct}%`,
+                                backgroundColor: seg.color,
+                            }}
+                            title={`${seg.label}`}
+                        />
+                    ))}
                 </div>
 
-                {/* Marker Dot with white center and colored border matching Guava */}
-                <div
-                    className='absolute w-2.5 h-2.5 rounded-full bg-white border-[2px] shadow-2xs transition-all pointer-events-none'
-                    style={{
-                        left: `calc(${clampedPercent}% - 5px)`,
-                        borderColor: color,
-                    }}
-                />
+                {/* Marker Dot with white center and colored border at identical percentage */}
+                {markerPct !== undefined && (
+                    <div
+                        className='absolute w-2.5 h-2.5 rounded-full bg-white border-[2px] shadow-2xs transition-all pointer-events-none -translate-x-1/2'
+                        style={{
+                            left: `${markerPct}%`,
+                            borderColor: statusColor,
+                        }}
+                    />
+                )}
             </div>
         </div>
     )

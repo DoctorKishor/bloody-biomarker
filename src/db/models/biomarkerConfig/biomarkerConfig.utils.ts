@@ -1,22 +1,19 @@
 import { v4 as uuidv4 } from 'uuid'
 
-import { getCurrentUserId } from '@/db/models/user'
+import { getCurrentUserId } from '@/db/models/user/user.utils'
 // eslint-disable-next-line no-restricted-imports
 import { db } from '@/db/services/db.service'
 
 import { BIOMARKER_CONFIGS } from './biomarkerConfig.initial'
 import { BiomarkerConfig } from './biomarkerConfig.types'
 
-export const preloadBiomarkerConfigs = async (): Promise<void> => {
-    const existingConfigs = await db.biomarkerConfigs.toArray()
-
-    if (existingConfigs.length > 0) {
+export const seedBiomarkerConfigsForUser = async (userId: string): Promise<void> => {
+    const existingForUser = await db.biomarkerConfigs.where('userId').equals(userId).toArray()
+    if (existingForUser.length > 0) {
         return
     }
 
     const now = new Date()
-    const userId = await getCurrentUserId()
-
     const configs: BiomarkerConfig[] = BIOMARKER_CONFIGS.map(config => ({
         id: uuidv4(),
         userId,
@@ -32,6 +29,17 @@ export const preloadBiomarkerConfigs = async (): Promise<void> => {
     }))
 
     await db.biomarkerConfigs.bulkAdd(configs)
+}
+
+export const preloadBiomarkerConfigs = async (): Promise<void> => {
+    const existingConfigs = await db.biomarkerConfigs.toArray()
+
+    if (existingConfigs.length > 0) {
+        return
+    }
+
+    const userId = await getCurrentUserId()
+    await seedBiomarkerConfigsForUser(userId)
 }
 
 export const isValueNormal = (

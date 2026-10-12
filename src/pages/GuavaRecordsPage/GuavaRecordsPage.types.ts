@@ -25,10 +25,12 @@ export interface HealthRecordItem {
     isRecentlyAdded?: boolean
     documentId?: string
     biomarkerCount?: number
+    previewImage?: string
 }
 
 export interface GuavaRecordsPageProps {
     className?: string
     onAddResult?: () => void
     onNavigateToBiomarkers?: () => void
+    onNavigateToSources?: () => void
 }

@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { UploadOutlined, FileOutlined, DeleteOutlined } from '@ant-design/icons'
 import { Button, Card, List, Typography, Tag, Space } from 'antd'
 
-import { createDocument, formatFileSize, getDocumentTypeFromMimeType, useDocuments, addDocument, deleteDocument, useBiomarkerRecords } from '@/db'
+import { DeleteDocumentModal } from '@/components/DeleteDocumentModal'
+import { createDocument, formatFileSize, getDocumentTypeFromMimeType, useDocuments, addDocument, deleteDocumentWithCascade, useBiomarkerRecords, UploadedDocument } from '@/db'
 
 import { DocumentUploadProps } from './DocumentUpload.types'
 
@@ -16,6 +17,22 @@ export const DocumentUpload = (props: DocumentUploadProps) => {
 
     const [selectedFile, setSelectedFile] = useState<File | null>(null)
     const [recordCounts, setRecordCounts] = useState<Record<string, number>>({})
+    const [docToDelete, setDocToDelete] = useState<UploadedDocument | null>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
+
+    const handleConfirmDelete = async (deleteRelatedData: boolean) => {
+        if (!docToDelete) return
+        setIsDeleting(true)
+        try {
+            await deleteDocumentWithCascade({
+                documentId: docToDelete.id,
+                deleteRelatedData,
+            })
+            setDocToDelete(null)
+        } finally {
+            setIsDeleting(false)
+        }
+    }
 
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0]
@@ -111,7 +128,7 @@ export const DocumentUpload = (props: DocumentUploadProps) => {
                                         danger
                                         size='small'
                                         icon={<DeleteOutlined/>}
-                                        onClick={() => { void deleteDocument(doc.id) }}
+                                        onClick={() => { setDocToDelete(doc) }}
                                     />,
                                 ]}
                             >
@@ -148,6 +165,19 @@ export const DocumentUpload = (props: DocumentUploadProps) => {
                     />
                 )}
             </Card>
+
+            <DeleteDocumentModal
+                open={!!docToDelete}
+                documentName={docToDelete?.originalName}
+                recordCount={docToDelete ? recordCounts[docToDelete.id] : undefined}
+                isDeleting={isDeleting}
+                onClose={() => {
+                    if (!isDeleting) {
+                        setDocToDelete(null)
+                    }
+                }}
+                onConfirm={handleConfirmDelete}
+            />
         </div>
     )
 }

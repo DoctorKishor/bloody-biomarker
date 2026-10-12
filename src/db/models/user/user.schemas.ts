@@ -6,4 +6,9 @@ export const userSchema = z.object({
     updatedAt: z.coerce.date(),
     name: z.string().optional(),
     email: z.string().email().optional(),
+    gender: z.enum(['male', 'female']).optional(),
+    birthDate: z.string().optional(),
+    age: z.number().optional(),
+    bloodType: z.string().optional(),
+    height: z.string().optional(),
 })

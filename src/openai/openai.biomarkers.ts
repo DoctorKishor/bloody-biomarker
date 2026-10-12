@@ -14,6 +14,13 @@ import { getUnitType } from '@/utils/ucum/unitType'
 
 import { useOpenAI } from './openai.client'
 
+export interface BoundingBox {
+    top: number
+    left: number
+    width: number
+    height: number
+}
+
 export interface ExtractedBiomarker {
     id?: string
     biomarkerId?: string
@@ -28,6 +35,7 @@ export interface ExtractedBiomarker {
     targetRange?: Range
     order?: number
     page?: number | null
+    boundingBox?: BoundingBox
 }
 
 export interface ExtractionResult {
@@ -35,6 +43,90 @@ export interface ExtractionResult {
     testDate?: string
     labName?: string
 }
+
+export const boundingBoxSchema = z.preprocess((val) => {
+    if (!val) return undefined
+    // Handle array format e.g. [ymin, xmin, ymax, xmax] or [top, left, width, height]
+    if (Array.isArray(val) && val.length >= 4) {
+        let [y0, x0, y1, x1] = val.map(Number)
+        const maxVal = Math.max(y0, x0, y1, x1)
+        if (maxVal > 100) {
+            y0 = y0 / 10
+            x0 = x0 / 10
+            y1 = y1 / 10
+            x1 = x1 / 10
+        } else if (maxVal <= 1) {
+            y0 = y0 * 100
+            x0 = x0 * 100
+            y1 = y1 * 100
+            x1 = x1 * 100
+        }
+        return {
+            top: Math.round(Math.min(y0, y1) * 10) / 10,
+            left: Math.round(Math.min(x0, x1) * 10) / 10,
+            width: Math.round(Math.abs(x1 - x0) * 10) / 10,
+            height: Math.round(Math.abs(y1 - y0) * 10) / 10,
+        }
+    }
+    // Handle object formats
+    if (typeof val === 'object' && val !== null) {
+        const v = val as Record<string, unknown>
+        if ('ymin' in v && 'xmin' in v && 'ymax' in v && 'xmax' in v) {
+            let y0 = Number(v.ymin)
+            let x0 = Number(v.xmin)
+            let y1 = Number(v.ymax)
+            let x1 = Number(v.xmax)
+            const maxVal = Math.max(y0, x0, y1, x1)
+            if (maxVal > 100) {
+                y0 = y0 / 10
+                x0 = x0 / 10
+                y1 = y1 / 10
+                x1 = x1 / 10
+            } else if (maxVal <= 1) {
+                y0 = y0 * 100
+                x0 = x0 * 100
+                y1 = y1 * 100
+                x1 = x1 * 100
+            }
+            return {
+                top: Math.round(Math.min(y0, y1) * 10) / 10,
+                left: Math.round(Math.min(x0, x1) * 10) / 10,
+                width: Math.round(Math.abs(x1 - x0) * 10) / 10,
+                height: Math.round(Math.abs(y1 - y0) * 10) / 10,
+            }
+        }
+        if ('top' in v && 'left' in v) {
+            let top = Number(v.top)
+            let left = Number(v.left)
+            let width = Number(v.width ?? 50)
+            let height = Number(v.height ?? 3)
+            const maxVal = Math.max(top, left, width, height)
+            if (maxVal > 100) {
+                top = top / 10
+                left = left / 10
+                width = width / 10
+                height = height / 10
+            } else if (maxVal <= 1) {
+                top = top * 100
+                left = left * 100
+                width = width * 100
+                height = height * 100
+            }
+            return {
+                top: Math.round(top * 10) / 10,
+                left: Math.round(left * 10) / 10,
+                width: Math.round(width * 10) / 10,
+                height: Math.round(height * 10) / 10,
+            }
+        }
+    }
+    return undefined
+}, z.object({
+    top: z.number(),
+    left: z.number(),
+    width: z.number(),
+    height: z.number(),
+}).optional().nullable().transform((val) => val ?? undefined))
 
 const referenceRangeSchema = z.preprocess((val) => {
     return parseReferenceRangeInput(val)
@@ -77,6 +169,7 @@ export const extractedBiomarkerSchema = z.object({
         message: 'ucumCode cannot be an ambiguous value like a plain number (e.g., "1", "2"). Use proper UCUM codes or {name} format.',
     }),
     referenceRange: referenceRangeSchema.optional(),
+    boundingBox: boundingBoxSchema.optional(),
     order: z.number({
         message: 'order must be a number',
     }),
@@ -102,7 +195,7 @@ const buildExtractionPrompt = (existingBiomarkers: Array<{
     ucumCode?: string
     valueType?: string
     options?: string[]
-}>) => `You are a medical data extraction assistant. Extract all biomarker/blood test results from the provided text.
+}>) => `You are a medical data extraction assistant. Extract all biomarker/blood test results from the provided document image.
 
 Return a JSON object with the following structure:
 {
@@ -118,6 +211,12 @@ Return a JSON object with the following structure:
         "min": minimum reference value or null (ONLY for numeric results),
         "max": maximum reference value or null (ONLY for numeric results)
       },
+      "boundingBox": {
+        "top": vertical coordinate as percentage of page height (0 to 100) where the row starts,
+        "left": horizontal coordinate as percentage of page width (0 to 100) where the row starts,
+        "width": width of row covering test name and value as percentage of page width (0 to 100),
+        "height": height of row as percentage of page height (typically 2.0 to 4.5)
+      },
       "order": order number starting from 0
     }
   ],
@@ -128,6 +227,14 @@ Return a JSON object with the following structure:
 CRITICAL: Never include both "value" and "textValue" in the same biomarker - use ONLY one based on result type!
 
 IMPORTANT: Preserve the order of biomarkers as they appear in the document. Assign sequential order numbers starting from 0.
+
+Bounding Box Coordinate Rules (CRITICAL FOR FILE PREVIEW & AUDIT):
+- boundingBox: For each biomarker row, provide normalized coordinates (percentages 0 to 100) on the document page:
+  * top: distance from the top edge of the page image to the top of this parameter's printed line (0 to 100).
+  * left: distance from the left edge of the page image to where this test name begins (0 to 100).
+  * width: width of the row spanning across the parameter name, result value, and unit (typically 40 to 80).
+  * height: height of the single parameter line (typically 2.0 to 4.0).
+
 
 ${existingBiomarkers.length > 0 ? `\nExisting biomarkers in the system (match these exactly, including ucumCode and valueType):\n${existingBiomarkers.map(b => {
         const ucum = b.ucumCode ?? 'N/A'

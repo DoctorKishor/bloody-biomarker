@@ -16,7 +16,7 @@ export const GuavaApp = () => {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
 
     return (
-        <div className='min-h-screen bg-[#f8faf9] flex flex-col pb-32 lg:pb-0 w-full overflow-x-hidden'>
+        <div className={`min-h-screen ${activeTab === 'profile' ? 'lg:h-screen lg:overflow-hidden' : ''} bg-[#f8faf9] flex flex-col pb-32 lg:pb-0 w-full overflow-x-hidden`}>
             {/* Desktop Top Navigation Bar */}
             <GuavaHeader
                 activeTab={activeTab}
@@ -25,7 +25,7 @@ export const GuavaApp = () => {
             />
 
             {/* Active Tab Content */}
-            <div className='flex-1'>
+            <div className={`flex-1 ${activeTab === 'profile' ? 'lg:h-[calc(100vh-4rem)] lg:overflow-hidden' : ''}`}>
                 {activeTab === 'profile' && (
                     <GuavaProfilePage
                         onNavigateToBiomarkers={() => { setActiveTab('biomarkers') }}
@@ -64,6 +64,7 @@ export const GuavaApp = () => {
                     <GuavaRecordsPage
                         onAddResult={() => { setIsUploadModalOpen(true) }}
                         onNavigateToBiomarkers={() => { setActiveTab('biomarkers') }}
+                        onNavigateToSources={() => { setActiveTab('sources') }}
                     />
                 )}
 

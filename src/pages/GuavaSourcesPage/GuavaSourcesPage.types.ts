@@ -7,6 +7,12 @@ export interface SourceAttachmentFile {
     name: string
     uploadDate: string
     size: string
+    previewImage?: string
+    provider?: string
+    date?: string
+    notes?: string
+    documentId?: string
+    pageNumber?: number
 }
 
 export interface ExtractedLabItem {
@@ -27,6 +33,7 @@ export interface ExtractedLabItem {
 
 export interface ExtractedLabGroup {
     id: string
+    fileId?: string
     title: string
     date: string
     items: ExtractedLabItem[]

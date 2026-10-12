@@ -3,7 +3,20 @@ import { useMemo } from 'react'
 import { EntityTable, IDType, UpdateSpec, InsertType, IndexableType } from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
 
+import { useActiveUserId } from '@/db/hooks/useActiveUserId'
+// eslint-disable-next-line no-restricted-imports
+import { db, getCurrentUserIdSync } from '@/db/services/db.service'
 import { createBaseEntity } from '@/db/utils/entity.utils'
+
+const USER_SCOPED_TABLE_NAMES = new Set([
+    'biomarkerConfigs',
+    'biomarkerRecords',
+    'uploadedFiles',
+    'savedFilters',
+    'verifiedConversions',
+    'blockedMerges',
+    'formulas',
+])
 
 interface ModelHooksConfig<T> {
     defaultSort?: (a: T, b: T) => number
@@ -22,7 +35,37 @@ export function createModelHooks<T extends object, K extends keyof T & string> (
 ) {
     return {
         useItems: (options?: UseItemsOptions<T>) => {
-            const rawData = useLiveQuery(async () => await table.toArray(), [])
+            const activeUserId = useActiveUserId()
+            const isUserScoped = table?.name ? USER_SCOPED_TABLE_NAMES.has(table.name) : false
+
+            const rawData = useLiveQuery(async () => {
+                const all = await table.toArray()
+                if (!isUserScoped) {
+                    return all
+                }
+
+                const currentId = activeUserId ?? getCurrentUserIdSync()
+                if (!currentId) {
+                    return all
+                }
+
+                let initialUserId: string | undefined
+                try {
+                    const firstUser = await db.users?.orderBy?.('createdAt')?.first?.()
+                    initialUserId = firstUser?.id
+                } catch {
+                    // Ignore in mock or standalone environments
+                }
+
+                return all.filter((item) => {
+                    const itemUserId = (item as { userId?: string }).userId
+                    if (itemUserId) {
+                        return itemUserId === currentId
+                    }
+                    return currentId === initialUserId
+                })
+            }, [activeUserId])
+
             const data = useMemo(() => {
                 if (!rawData) return []
                 let items = rawData.filter((item): item is T => item != null)
@@ -39,9 +82,24 @@ export function createModelHooks<T extends object, K extends keyof T & string> (
         },
 
         useItem: (id?: IDParam<T, K>) => {
+            const activeUserId = useActiveUserId()
+            const isUserScoped = table?.name ? USER_SCOPED_TABLE_NAMES.has(table.name) : false
+
             const data = useLiveQuery(
-                async () => id ? await table.get(id) ?? null : null,
-                [id],
+                async () => {
+                    if (!id) return null
+                    const item = await table.get(id)
+                    if (!item) return null
+                    if (!isUserScoped) return item
+
+                    const currentId = activeUserId ?? getCurrentUserIdSync()
+                    const itemUserId = (item as { userId?: string }).userId
+                    if (itemUserId && currentId && itemUserId !== currentId) {
+                        return null
+                    }
+                    return item
+                },
+                [id, activeUserId],
             )
             return {
                 data: data ?? null,

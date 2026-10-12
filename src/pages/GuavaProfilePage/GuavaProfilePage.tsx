@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 
 import {
     EditOutlined,
@@ -12,9 +12,25 @@ import {
 import { message } from 'antd'
 
 import { HealthScoresDrawer } from '@/components/HealthScoresDrawer'
-import { useBiomarkerConfigs } from '@/db/models/biomarkerConfig'
+import { getBiomarkerSystem } from '@/constants/bodySystems'
+import { BIOMARKER_CONFIGS, useBiomarkerConfigs } from '@/db/models/biomarkerConfig'
 import { useBiomarkerRecords } from '@/db/models/biomarkerRecord'
+import { getNameByUcum, useUnits } from '@/db/models/unit'
+import {
+    useCurrentUser,
+    useUsers,
+    updateUser,
+    createNewProfile,
+    deleteProfileWithCascade,
+    User,
+} from '@/db/models/user'
+import { switchActiveUserId } from '@/db/services/db.service'
+import { evaluateBiomarkerRange } from '@/utils/referenceRange'
 
+import {
+    EditProfileModal,
+    AddProfileModal,
+} from './GuavaProfileEditModal'
 import {
     GuavaProfileModal,
     ProfileSectionType,
@@ -28,22 +44,59 @@ export interface GuavaProfilePageProps {
 
 export const GuavaProfilePage = (props: GuavaProfilePageProps) => {
     const { onNavigateToBiomarkers, onAddResult } = props
+    const currentUser = useCurrentUser()
+    const userGender = currentUser?.gender ?? 'male'
+    const userAge = currentUser?.age ?? 35
+
     const [isScoreDrawerOpen, setIsScoreDrawerOpen] = useState(false)
     const [activeNav, setActiveNav] = useState('basic')
     const [activeModal, setActiveModal] = useState<ProfileSectionType | null>(null)
-    const [profileRecords, setProfileRecords] = useState<Record<ProfileSectionType, ProfileRecordItem[]>>({
-        meds: [],
-        conditions: [],
-        allergies: [],
-        lifestyle: [],
-        vaccinations: [],
-        events: [],
-        genetics: [],
-        providers: [],
-    })
+    const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false)
+    const [isAddProfileModalOpen, setIsAddProfileModalOpen] = useState(false)
+    const [profileVersion, setProfileVersion] = useState(0)
+
+    const { data: allProfiles = [] } = useUsers()
+
+    // Load profile records partitioned by active user ID cleanly without cascading effects
+    const profileRecords = useMemo((): Record<ProfileSectionType, ProfileRecordItem[]> => {
+        const defaultEmpty: Record<ProfileSectionType, ProfileRecordItem[]> = {
+            meds: [],
+            conditions: [],
+            allergies: [],
+            lifestyle: [],
+            vaccinations: [],
+            events: [],
+            genetics: [],
+            providers: [],
+        }
+        if (!currentUser?.id) return defaultEmpty
+        try {
+            const raw = localStorage.getItem(`guava_profile_records_${currentUser.id}`)
+            if (raw) {
+                const parsed = JSON.parse(raw) as unknown
+                if (typeof parsed === 'object' && parsed !== null) {
+                    return parsed as Record<ProfileSectionType, ProfileRecordItem[]>
+                }
+            }
+        } catch {
+            // Ignore parse errors
+        }
+        return defaultEmpty
+    }, [currentUser?.id, profileVersion])
 
     const { data: configs } = useBiomarkerConfigs({ filter: (c) => c.approved })
     const { data: records } = useBiomarkerRecords({ filter: (r) => r.approved })
+    const { data: units } = useUnits()
+
+    const handleToggleGender = async () => {
+        if (!currentUser) return
+        const nextGender = userGender === 'male' ? 'female' : 'male'
+        await updateUser(currentUser.id, {
+            gender: nextGender,
+            updatedAt: new Date(),
+        })
+        void message.success(`Profile updated to ${nextGender === 'male' ? 'Male (♂)' : 'Female (♀)'}`)
+    }
 
     const sidebarItems = [
         {
@@ -98,10 +151,24 @@ export const GuavaProfilePage = (props: GuavaProfilePageProps) => {
         },
     ]
 
+    const mainScrollRef = useRef<HTMLElement | null>(null)
+
     const scrollToSection = useCallback((id: string) => {
         setActiveNav(id)
         const element = document.getElementById(`section-${id}`)
-        if (element) {
+        const mainEl = mainScrollRef.current
+
+        if (mainEl && window.innerWidth >= 1024) {
+            if (element) {
+                const mainRect = mainEl.getBoundingClientRect()
+                const elemRect = element.getBoundingClientRect()
+                const targetScrollTop = mainEl.scrollTop + (elemRect.top - mainRect.top) - 16
+                mainEl.scrollTo({
+                    top: Math.max(0, targetScrollTop),
+                    behavior: 'smooth',
+                })
+            }
+        } else if (element) {
             const headerOffset = 80
             const elementPosition = element.getBoundingClientRect().top
             const offsetPosition = elementPosition + window.pageYOffset - headerOffset
@@ -116,82 +183,261 @@ export const GuavaProfilePage = (props: GuavaProfilePageProps) => {
     useEffect(() => {
         const handleScroll = () => {
             const sectionIds = sidebarItems.map((item) => item.id)
-            const scrollPosition = window.scrollY + 100
+            const mainEl = mainScrollRef.current
 
-            for (let i = sectionIds.length - 1; i >= 0; i--) {
-                const sectionId = sectionIds[i]
-                const element = document.getElementById(`section-${sectionId}`)
-                if (element && element.offsetTop <= scrollPosition) {
-                    setActiveNav(sectionId)
-                    break
+            if (mainEl && window.innerWidth >= 1024) {
+                const mainTop = mainEl.getBoundingClientRect().top
+                for (let i = sectionIds.length - 1; i >= 0; i--) {
+                    const sectionId = sectionIds[i]
+                    const element = document.getElementById(`section-${sectionId}`)
+                    if (element) {
+                        const elemTop = element.getBoundingClientRect().top - mainTop
+                        if (elemTop <= 140) {
+                            setActiveNav(sectionId)
+                            break
+                        }
+                    }
+                }
+            } else {
+                const scrollPosition = window.scrollY + 100
+                for (let i = sectionIds.length - 1; i >= 0; i--) {
+                    const sectionId = sectionIds[i]
+                    const element = document.getElementById(`section-${sectionId}`)
+                    if (element && element.offsetTop <= scrollPosition) {
+                        setActiveNav(sectionId)
+                        break
+                    }
                 }
             }
         }
 
+        const mainEl = mainScrollRef.current
+        if (mainEl) {
+            mainEl.addEventListener('scroll', handleScroll, { passive: true })
+        }
         window.addEventListener('scroll', handleScroll, { passive: true })
+
         return () => {
+            if (mainEl) {
+                mainEl.removeEventListener('scroll', handleScroll)
+            }
             window.removeEventListener('scroll', handleScroll)
         }
     }, [sidebarItems])
 
-    // Calculate system biomarker status dots
-    const systemSummaries = [
-        {
-            id: 'heart',
-            name: 'Heart',
-            icon: '❤️',
-        },
-        {
-            id: 'kidney',
-            name: 'Kidney',
-            icon: '🫘',
-        },
-        {
-            id: 'liver',
-            name: 'Liver',
-            icon: '🫁',
-        },
-        {
-            id: 'metabolic',
-            name: 'Metabolic',
-            icon: '⚡',
-        },
-        {
-            id: 'blood',
-            name: 'Blood',
-            icon: '🩸',
-        },
-        {
-            id: 'immune',
-            name: 'Immune',
-            icon: '🛡️',
-        },
-        {
-            id: 'electrolytes',
-            name: 'Electrolytes',
-            icon: '💧',
-        },
-    ]
+    // Calculate system biomarker status dots based on real DB configs and records
+    const systemSummaries = useMemo(() => {
+        const systems = [
+            {
+                id: 'heart',
+                name: 'Heart',
+                icon: '❤️',
+            },
+            {
+                id: 'kidney',
+                name: 'Kidney',
+                icon: '🫘',
+            },
+            {
+                id: 'liver',
+                name: 'Liver',
+                icon: '🫁',
+            },
+            {
+                id: 'metabolic',
+                name: 'Metabolic',
+                icon: '⚡',
+            },
+            {
+                id: 'blood',
+                name: 'Blood',
+                icon: '🩸',
+            },
+            {
+                id: 'immune',
+                name: 'Immune',
+                icon: '🛡️',
+            },
+            {
+                id: 'electrolytes',
+                name: 'Electrolytes',
+                icon: '💧',
+            },
+        ]
+
+        return systems.map((sys) => {
+            // Find all biomarker configs belonging to this system
+            const matchingConfigs = configs.filter((c) => getBiomarkerSystem(c.name).id === sys.id)
+
+            // If no configs in DB yet for this system, fall back to initial default configs so system has defined tests
+            const configsToUse = matchingConfigs.length > 0
+                ? matchingConfigs
+                : BIOMARKER_CONFIGS.filter((c) => c.name && getBiomarkerSystem(c.name).id === sys.id)
+
+            const dots = configsToUse.map((cfg, idx) => {
+                const configId = cfg.id ?? `def-${sys.id}-${idx}`
+                const configName = cfg.name ?? 'Biomarker'
+
+                const configRecords = records
+                    .filter((r) => (r.biomarkerId === configId || (cfg.name && r.originalName === cfg.name)) &&
+                        (r.value !== undefined || r.textValue !== undefined))
+                    .sort((a, b) => {
+                        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+                        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+                        return dateB - dateA
+                    })
+
+                const latestRecord = configRecords[0]
+
+                if (!latestRecord || (latestRecord.value === undefined && !latestRecord.textValue)) {
+                    return {
+                        biomarkerId: configId,
+                        name: configName,
+                        status: 'no-data' as const,
+                        colorClass: 'bg-[#cbd5e1]',
+                        tooltip: `${configName}: No data`,
+                    }
+                }
+
+                const resolvedUnitName = getNameByUcum(units, cfg.ucumCode)
+                const unitLabel = resolvedUnitName && resolvedUnitName.length > 0
+                    ? resolvedUnitName
+                    : (cfg.ucumCode ?? '')
+
+                const reportRangeRaw = latestRecord.referenceRange ?? latestRecord.referenceRangeString ?? cfg.normalRange
+                const evaluation = evaluateBiomarkerRange({
+                    biomarkerName: configName,
+                    value: latestRecord.value,
+                    unit: unitLabel,
+                    reportRangeRaw,
+                    userGender,
+                    userAge,
+                })
+
+                const displayVal = latestRecord.value !== undefined ? String(latestRecord.value) : (latestRecord.textValue ?? '')
+                const valueWithUnit = `${displayVal}${unitLabel ? ' ' + unitLabel : ''}`
+
+                if (!evaluation.isAbnormal || evaluation.status === 'Optimal' || evaluation.status === 'Normal' || evaluation.status === 'In range') {
+                    return {
+                        biomarkerId: configId,
+                        name: configName,
+                        status: 'normal' as const,
+                        colorClass: 'bg-[#10b981]',
+                        tooltip: `${configName}: ${evaluation.statusLabel} (${valueWithUnit})`,
+                    }
+                }
+
+                const labelLower = evaluation.statusLabel.toLowerCase()
+                const isBorderline = evaluation.status === 'Borderline High' || labelLower.includes('borderline') || labelLower.includes('impaired')
+
+                if (isBorderline) {
+                    return {
+                        biomarkerId: configId,
+                        name: configName,
+                        status: 'borderline' as const,
+                        colorClass: 'bg-[#f59e0b]',
+                        tooltip: `${configName}: ${evaluation.statusLabel} (${valueWithUnit})`,
+                    }
+                }
+
+                return {
+                    biomarkerId: configId,
+                    name: configName,
+                    status: 'abnormal' as const,
+                    colorClass: 'bg-[#ef4444]',
+                    tooltip: `${configName}: ${evaluation.statusLabel} (${valueWithUnit})`,
+                }
+            })
+
+            // Sort dots: Green (normal) -> Orange (borderline) -> Red (abnormal) -> Grey (no data)
+            const statusOrder: Record<string, number> = {
+                normal: 1,
+                borderline: 2,
+                abnormal: 3,
+                'no-data': 4,
+            }
+
+            const sortedDots = [...dots].sort((a, b) => (statusOrder[a.status] ?? 5) - (statusOrder[b.status] ?? 5))
+
+            return {
+                ...sys,
+                totalTests: dots.length,
+                normalCount: dots.filter((d) => d.status === 'normal').length,
+                borderlineCount: dots.filter((d) => d.status === 'borderline').length,
+                abnormalCount: dots.filter((d) => d.status === 'abnormal').length,
+                noDataCount: dots.filter((d) => d.status === 'no-data').length,
+                dots: sortedDots,
+            }
+        })
+    }, [configs, records, units, userGender, userAge])
 
     const handleAddRecord = (section: ProfileSectionType, item: ProfileRecordItem) => {
-        setProfileRecords((prev) => ({
-            ...prev,
-            [section]: [item, ...prev[section]],
-        }))
+        if (currentUser?.id) {
+            try {
+                const current = profileRecords[section] ?? []
+                const updated = {
+                    ...profileRecords,
+                    [section]: [item, ...current],
+                }
+                localStorage.setItem(`guava_profile_records_${currentUser.id}`, JSON.stringify(updated))
+                setProfileVersion((v) => v + 1)
+            } catch {
+                // Ignore storage errors
+            }
+        }
         setActiveModal(null)
         void message.success(`${item.title} added to profile`)
     }
 
     const handleDeleteRecord = (section: ProfileSectionType, id: string) => {
-        setProfileRecords((prev) => ({
-            ...prev,
-            [section]: prev[section].filter((item) => item.id !== id),
-        }))
+        if (currentUser?.id) {
+            try {
+                const current = profileRecords[section] ?? []
+                const updated = {
+                    ...profileRecords,
+                    [section]: current.filter((item) => item.id !== id),
+                }
+                localStorage.setItem(`guava_profile_records_${currentUser.id}`, JSON.stringify(updated))
+                setProfileVersion((v) => v + 1)
+            } catch {
+                // Ignore storage errors
+            }
+        }
         void message.info('Item removed')
     }
 
+    const handleCreateProfile = async (params: {
+        name: string
+        gender: 'male' | 'female'
+        age: number
+        birthDate?: string
+        bloodType?: string
+        height?: string
+        email?: string
+    }) => {
+        const newUser = await createNewProfile(params)
+        void message.success(`Profile "${newUser.name}" created and selected!`)
+    }
+
+    const handleSaveProfile = async (updates: Partial<User>) => {
+        if (!currentUser) return
+        await updateUser(currentUser.id, {
+            ...updates,
+            updatedAt: new Date(),
+        })
+        void message.success('Profile details updated successfully')
+    }
+
+    const handleDeleteCurrentProfile = async () => {
+        if (!currentUser) return
+        await deleteProfileWithCascade(currentUser.id)
+        void message.success('Profile deleted')
+    }
+
     const handleActionClick = (featureName: string) => {
-        if (featureName === 'Add Medication' || featureName === 'New Med') {
+        if (featureName === 'Edit Profile' || featureName === 'Add Blood Type') {
+            setIsEditProfileModalOpen(true)
+        } else if (featureName === 'Add Medication' || featureName === 'New Med') {
             setActiveModal('meds')
         } else if (featureName === 'Add Condition' || featureName === 'Add Injury') {
             setActiveModal('conditions')
@@ -213,11 +459,11 @@ export const GuavaProfilePage = (props: GuavaProfilePageProps) => {
     }
 
     return (
-        <div className='min-h-screen bg-[#f8faf9] text-[#192823] select-none w-full overflow-x-hidden'>
-            <div className='max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-6 flex flex-col lg:flex-row gap-4 lg:gap-8 w-full box-border'>
-                {/* Left Navigation Rail */}
-                <aside className='w-72 shrink-0 hidden lg:block sticky top-20 h-fit'>
-                    <div className='bg-white rounded-2xl border border-[#e5ece8] p-3 flex flex-col gap-1 shadow-sm'>
+        <div className='min-h-screen lg:min-h-0 lg:h-full bg-[#f8faf9] text-[#192823] select-none w-full overflow-x-hidden lg:overflow-hidden'>
+            <div className='max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-0 flex flex-col lg:flex-row gap-4 lg:gap-8 w-full box-border lg:h-full lg:overflow-hidden'>
+                {/* Left Navigation Rail (Constant, stays stationary) */}
+                <aside className='w-72 shrink-0 hidden lg:flex flex-col py-6 h-full justify-start'>
+                    <div className='bg-white rounded-2xl border border-[#e5ece8] p-3 flex flex-col gap-1 shadow-sm w-full'>
                         {sidebarItems.map((item) => {
                             const isActive = activeNav === item.id
                             return (
@@ -239,22 +485,78 @@ export const GuavaProfilePage = (props: GuavaProfilePageProps) => {
                     </div>
                 </aside>
 
-                {/* Main Content Area */}
-                <main className='flex-1 flex flex-col gap-4 sm:gap-6 max-w-4xl w-full min-w-0 box-border'>
+                {/* Main Content Area (Only this section scrolls up or down) */}
+                <main
+                    ref={mainScrollRef}
+                    className='flex-1 flex flex-col gap-4 sm:gap-6 max-w-4xl w-full min-w-0 box-border lg:h-full lg:overflow-y-auto lg:py-6 lg:pr-3 pb-24 lg:pb-32 scroll-smooth [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#cbd5e1] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#94a3b8]'
+                >
                     {/* 1. User Header & Health Score Card */}
-                    <div id='section-basic' className='bg-white rounded-2xl border border-[#e5ece8] p-4 sm:p-5 shadow-xs flex flex-col gap-4 w-full box-border overflow-hidden scroll-mt-24'>
+                    <div id='section-basic' className='bg-white rounded-2xl border border-[#e5ece8] p-4 sm:p-5 shadow-xs flex flex-col gap-4 w-full box-border overflow-hidden scroll-mt-24 shrink-0'>
+                        {/* Multiple Profiles Switcher Bar */}
+                        <div className='flex flex-col gap-2 pb-3 border-b border-[#edf2ee]'>
+                            <div className='flex items-center justify-between'>
+                                <span className='text-[11px] font-bold text-[#64748b] uppercase tracking-wider flex items-center gap-1.5'>
+                                    <span>👤</span> Profiles ({allProfiles.length})
+                                </span>
+                                <button
+                                    type='button'
+                                    onClick={() => { setIsAddProfileModalOpen(true) }}
+                                    className='inline-flex items-center gap-1.5 text-xs font-semibold text-[#0d9468] hover:text-[#0b7a56] py-1 px-2.5 rounded-lg hover:bg-[#e8f5f1] transition-colors border border-dashed border-[#0d9468]/40'
+                                >
+                                    <PlusOutlined className='text-[10px]'/>
+                                    <span>Add Profile</span>
+                                </button>
+                            </div>
+
+                            {/* Scrollable Profiles Pills */}
+                            <div className='flex items-center gap-2 overflow-x-auto py-1 no-scrollbar'>
+                                {allProfiles.map((prof) => {
+                                    const isActive = prof.id === currentUser?.id
+                                    const initials = prof.name ? prof.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() : 'P'
+                                    return (
+                                        <button
+                                            key={prof.id}
+                                            type='button'
+                                            onClick={() => {
+                                                if (!isActive) {
+                                                    switchActiveUserId(prof.id)
+                                                    void message.success(`Switched to profile: ${prof.name ?? 'User'}`)
+                                                }
+                                            }}
+                                            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all shrink-0 ${
+                                                isActive
+                                                    ? 'bg-[#e8f5f1] border-[#0d9468] text-[#0d9468] shadow-2xs font-semibold ring-2 ring-[#0d9468]/20'
+                                                    : 'bg-white border-[#e2e8f0] text-[#475569] hover:border-[#cbd5e1] hover:bg-[#f8faf9]'
+                                            }`}
+                                        >
+                                            <span
+                                                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${
+                                                    isActive ? 'bg-[#0d9468]' : 'bg-[#94a3b8]'
+                                                }`}
+                                            >
+                                                {initials}
+                                            </span>
+                                            <span className='truncate max-w-[130px] font-semibold'>{prof.name ?? 'Unnamed'}</span>
+                                            {isActive && (
+                                                <span className='w-2 h-2 rounded-full bg-[#0d9468] shrink-0'/>
+                                            )}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
                         <div className='flex items-start justify-between'>
                             <div>
                                 <div className='flex items-center gap-3'>
                                     <h1 className='text-2xl font-bold text-[#192823] tracking-tight leading-tight'>
-                                        Dr. Kishor
-                                        <br className='sm:hidden'/>
-                                        {' '}Anbazhakan
+                                        {currentUser?.name ?? 'Dr. Kishor Anbazhakan'}
                                     </h1>
                                     <button
                                         type='button'
-                                        onClick={() => { handleActionClick('Edit Profile') }}
-                                        className='text-[#5f736b] hover:text-[#192823] p-1 rounded-full hover:bg-[#f0f4f2] transition-colors -mt-1'
+                                        onClick={() => { setIsEditProfileModalOpen(true) }}
+                                        className='text-[#5f736b] hover:text-[#192823] p-1.5 rounded-full hover:bg-[#f0f4f2] transition-colors -mt-1'
+                                        title='Edit Profile Details'
                                     >
                                         <EditOutlined className='text-base'/>
                                     </button>
@@ -265,28 +567,36 @@ export const GuavaProfilePage = (props: GuavaProfilePageProps) => {
                                 <div className='flex flex-wrap items-center gap-2 mt-3'>
                                     <button
                                         type='button'
-                                        onClick={() => { handleActionClick('Add Birth Date') }}
-                                        className='px-3 py-1 rounded-full border border-[#e5ece8] bg-white text-xs font-medium text-[#192823] hover:bg-[#f8faf9] transition-colors'
+                                        onClick={() => { setIsEditProfileModalOpen(true) }}
+                                        className='px-3 py-1 rounded-full border border-[#0d9468]/30 bg-[#f0fdf4] text-xs font-semibold text-[#166534] hover:bg-[#dcfce7] transition-colors flex items-center gap-1 shadow-2xs cursor-pointer'
+                                        title='Click to edit age'
                                     >
-                                        + Add Birth Date
+                                        <span>🎂 Age: {userAge} yrs</span>
                                     </button>
                                     <button
                                         type='button'
-                                        onClick={() => { handleActionClick('Add Sex') }}
-                                        className='px-3 py-1 rounded-full border border-[#e5ece8] bg-white text-xs font-medium text-[#192823] hover:bg-[#f8faf9] transition-colors'
+                                        onClick={() => { void handleToggleGender() }}
+                                        className='px-3 py-1 rounded-full border border-[#0d9468]/30 bg-[#f0fdf4] text-xs font-semibold text-[#166534] hover:bg-[#dcfce7] transition-colors flex items-center gap-1 shadow-2xs cursor-pointer'
+                                        title='Click to toggle gender'
                                     >
-                                        + Add Sex
+                                        <span>{userGender === 'female' ? '♀ Female' : '♂ Male'}</span>
                                     </button>
-                                    <span className='px-3 py-1 rounded-full border border-[#e5ece8] bg-white text-xs font-semibold text-[#192823]'>
-                                        167cm
-                                    </span>
+                                    <button
+                                        type='button'
+                                        onClick={() => { setIsEditProfileModalOpen(true) }}
+                                        className='px-3 py-1 rounded-full border border-[#e5ece8] bg-white text-xs font-semibold text-[#192823] hover:bg-[#f8faf9] transition-colors cursor-pointer'
+                                        title='Click to edit height'
+                                    >
+                                        {currentUser?.height ?? '167cm'}
+                                    </button>
                                     <div className='basis-full h-0 sm:hidden'/>
                                     <button
                                         type='button'
-                                        onClick={() => { handleActionClick('Add Blood Type') }}
-                                        className='px-3 py-1 rounded-full border border-[#e5ece8] bg-white text-xs font-medium text-[#192823] hover:bg-[#f8faf9] transition-colors'
+                                        onClick={() => { setIsEditProfileModalOpen(true) }}
+                                        className='px-3 py-1 rounded-full border border-[#e5ece8] bg-white text-xs font-medium text-[#192823] hover:bg-[#f8faf9] transition-colors cursor-pointer'
+                                        title='Click to edit blood type'
                                     >
-                                        + Add Blood Type
+                                        {currentUser?.bloodType ? `🩸 ${currentUser.bloodType}` : '+ Add Blood Type'}
                                     </button>
                                 </div>
                             </div>
@@ -392,7 +702,7 @@ export const GuavaProfilePage = (props: GuavaProfilePageProps) => {
                     </div>
 
                     {/* Mobile-Only View (<1024px) */}
-                    <div className='lg:hidden flex flex-col gap-3.5 w-full box-border'>
+                    <div className='lg:hidden flex flex-col gap-3.5 w-full box-border shrink-0'>
                         {/* Mobile Biomarkers Card */}
                         <div
                             onClick={onNavigateToBiomarkers}
@@ -594,7 +904,7 @@ export const GuavaProfilePage = (props: GuavaProfilePageProps) => {
                     </div>
 
                     {/* Desktop View Cards (>=1024px) */}
-                    <div className='hidden lg:flex flex-col gap-6'>
+                    <div className='hidden lg:flex flex-col gap-6 shrink-0'>
                         {/* 2. Biomarkers Summary Card */}
                         <div id='section-biomarkers' className='bg-white rounded-2xl border border-[#e5ece8] overflow-hidden shadow-sm flex flex-col scroll-mt-24'>
                             {/* Header Banner */}
@@ -621,12 +931,18 @@ export const GuavaProfilePage = (props: GuavaProfilePageProps) => {
                                                 <span className='text-sm'>{sys.icon}</span>
                                                 <span className='text-xs font-semibold text-[#192823]'>{sys.name}</span>
                                             </div>
-                                            <div className='flex items-center gap-1.5'>
-                                                <span className='w-2 h-2 rounded-full bg-[#10b981]'/>
-                                                <span className='w-2 h-2 rounded-full bg-[#10b981]'/>
-                                                <span className='w-2 h-2 rounded-full bg-[#10b981]'/>
-                                                <span className='w-2 h-2 rounded-full bg-[#e5ece8]'/>
-                                                <span className='w-2 h-2 rounded-full bg-[#e5ece8]'/>
+                                            <div className='flex flex-wrap items-center gap-1.5 min-h-[16px]'>
+                                                {sys.dots.length === 0 ? (
+                                                    <span className='text-[11px] text-[#94a3b8] italic'>No tests</span>
+                                                ) : (
+                                                    sys.dots.map((dot, idx) => (
+                                                        <span
+                                                            key={`${dot.biomarkerId}-${idx}`}
+                                                            title={dot.tooltip}
+                                                            className={`w-2 h-2 rounded-full shrink-0 ${dot.colorClass} transition-transform hover:scale-125 cursor-default`}
+                                                        />
+                                                    ))
+                                                )}
                                             </div>
                                         </div>
                                     )
@@ -1138,7 +1454,7 @@ export const GuavaProfilePage = (props: GuavaProfilePageProps) => {
                     </div>
 
                     {/* Footer matching mobile screenshot */}
-                    <div className='py-8 px-4 flex flex-col items-center gap-3.5 text-xs text-[#5f736b] text-center w-full box-border overflow-hidden'>
+                    <div className='py-8 px-4 flex flex-col items-center gap-3.5 text-xs text-[#5f736b] text-center w-full box-border overflow-hidden shrink-0'>
                         <span>Give friends a free Emergency Card?</span>
                         <button
                             type='button'
@@ -1194,6 +1510,23 @@ export const GuavaProfilePage = (props: GuavaProfilePageProps) => {
                 section={activeModal}
                 onClose={() => { setActiveModal(null) }}
                 onAdd={handleAddRecord}
+            />
+
+            {/* Edit Profile Details Modal */}
+            <EditProfileModal
+                isOpen={isEditProfileModalOpen}
+                onClose={() => { setIsEditProfileModalOpen(false) }}
+                user={currentUser ?? null}
+                canDelete={allProfiles.length > 1}
+                onSave={handleSaveProfile}
+                onDelete={handleDeleteCurrentProfile}
+            />
+
+            {/* Add New Profile Modal */}
+            <AddProfileModal
+                isOpen={isAddProfileModalOpen}
+                onClose={() => { setIsAddProfileModalOpen(false) }}
+                onCreate={handleCreateProfile}
             />
         </div>
     )

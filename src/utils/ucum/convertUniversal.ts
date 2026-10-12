@@ -63,11 +63,68 @@ const convertWithFactor = (
     return null
 }
 
+export const getCellConcentrationFactor = (unitStr: string): number | null => {
+    if (!unitStr) return null
+    const u = unitStr
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '')
+        .replace(/µ|μ/g, 'u')
+        .replace(/×/g, 'x')
+
+    // Base volume: /uL, /mcL, /cumm, /mm3, cells/uL, cells/mcL, cells/cumm, cells/mm3, etc. -> factor = 1
+    if (
+        /^(?:(?:cells?|count)?\/)?(?:u|ul|mcl|cumm|cu\.mm|mm3)$/i.test(u) ||
+        u === '/u' ||
+        u === '1/u' ||
+        u === '/ul' ||
+        u === '1/ul'
+    ) {
+        return 1
+    }
+
+    // Thousands: 10^3/uL, 10*3/uL, x10^3/uL, k/uL, k/mcL, thous/mcL, thous/uL, 10^9/L -> factor = 1,000
+    if (
+        /^(?:(?:x|\*|)?10(?:\^3|\*3|³)|k|thous)\/(?:u|ul|mcl|cumm|cu\.mm|mm3)$/i.test(u) ||
+        /^(?:x|\*|)?10(?:\^9|\*9|⁹)\/l$/i.test(u) ||
+        u === '10*3/u' ||
+        u === '10*3/ul' ||
+        u === '10*9/l'
+    ) {
+        return 1000
+    }
+
+    // Lakhs: lakh/cumm, lakhs/cumm, lac/cumm, lakh/uL -> factor = 100,000
+    if (/^(?:lakhs?|lacs?)\/(?:u|ul|mcl|cumm|cu\.mm|mm3)$/i.test(u)) {
+        return 100000
+    }
+
+    // Millions: 10^6/uL, 10*6/uL, x10^6/uL, M/uL, mil/uL, 10^12/L -> factor = 1,000,000
+    if (
+        /^(?:(?:x|\*|)?10(?:\^6|\*6|⁶)|m|mil|million|millions)\/(?:u|ul|mcl|cumm|cu\.mm|mm3)$/i.test(u) ||
+        /^(?:x|\*|)?10(?:\^12|\*12|¹²)\/l$/i.test(u) ||
+        u === '10*6/u' ||
+        u === '10*6/ul' ||
+        u === '10*12/l'
+    ) {
+        return 1000000
+    }
+
+    return null
+}
+
 const convertSimpleMath = (
     value: number,
     from: string,
     to: string,
 ): number | null => {
+    // Cell count / concentration conversion
+    const cellFrom = getCellConcentrationFactor(from)
+    const cellTo = getCellConcentrationFactor(to)
+    if (cellFrom !== null && cellTo !== null) {
+        return value * (cellFrom / cellTo)
+    }
+
     const normalizedFrom = normalizeUnit(from)
     const normalizedTo = normalizeUnit(to)
 
@@ -165,6 +222,16 @@ export const convertUniversal = (
     if (from === to) {
         return {
             value,
+            method: 'ucum',
+        }
+    }
+
+    // Direct cell concentration conversion (Platelets, WBC, RBC)
+    const cellFromFactor = getCellConcentrationFactor(from)
+    const cellToFactor = getCellConcentrationFactor(to)
+    if (cellFromFactor !== null && cellToFactor !== null) {
+        return {
+            value: value * (cellFromFactor / cellToFactor),
             method: 'ucum',
         }
     }
